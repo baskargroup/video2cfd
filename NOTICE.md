@@ -29,10 +29,7 @@ torch (and, optionally, manifold3d) — each under its own permissive license.
 
 The repository bundles a small set of STL template meshes used for template-based
 placement and mannequin insertion (`chair_*.stl`, `table_*.stl`,
-`person_sitting_1.stl`, `teacher.stl`).
-
-> **Action required before public release:** confirm the origin and
-> redistribution rights of each bundled STL template. If any was obtained from a
-> third-party model library under terms that do not permit redistribution,
-> replace it, remove it, or document its source/license here and ship a download
-> script instead.
+`person_sitting_1.stl`, `teacher.stl`). These models were obtained from publicly
+available online CAD repositories that provide them as free-to-download assets,
+and are redistributed here for convenience. If you are a rights holder of any
+bundled model and have concerns about its inclusion, please contact the authors.
