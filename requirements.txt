@@ -1,0 +1,19 @@
+# Runtime dependencies for the geometry pipeline (steps 2-5).
+# Step 1 (segmentation) has additional requirements -- see requirements-segment.txt.
+#
+# Install with:  pip install -r requirements.txt
+# A CUDA-enabled PyTorch is optional; step 2 falls back to a CPU/chunked path.
+
+numpy<2
+pandas
+scipy
+networkx
+open3d
+opencv-python
+pillow
+trimesh
+PyYAML
+torch            # CUDA build recommended for step 2; CPU works (slower)
+
+# Optional: boolean union of overlapping meshes (scene.use_boolean_union: true)
+# manifold3d

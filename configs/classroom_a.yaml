@@ -1,0 +1,357 @@
+# ==========================================
+# VIDEO2STL PIPELINE CONFIGURATION
+# ==========================================
+# This config controls the entire pipeline from segmentation to STL placement.
+# Each category (chair, table, etc.) runs through all steps independently.
+
+# ==========================================
+# PROJECT IDENTIFICATION
+# ==========================================
+project:
+  name: "classroom_v2_v2"
+  description: "Classroom video with grid coverage"
+
+# ==========================================
+# PATH CONFIGURATION
+# ==========================================
+paths:
+  # Base directories (relative to this config file location)
+  code_root: ".."                    # Repo root (relative to this config)
+  data_root: "../data"               # Repo-local data dir (see data/README.md)
+  
+  # Shared inputs - used by all categories unless overridden
+  # These are relative to: data_root/projects/{project.name}/
+  input:
+    point_cloud: "input/point_cloud_cropped.ply"
+    transforms: "input/transforms.json"
+    dataparser: "input/dataparser_transforms.json"
+  
+  # STL template files location (shared across all projects)
+  # Relative to: data_root/
+  stl_templates: "stl_templates"
+  
+  # Run output directory
+  # Relative to: data_root/projects/{project.name}/runs/
+  # Use "auto" to generate timestamp-based run ID
+  run_id: "run_010"
+
+# ==========================================
+# GLOBAL DEFAULTS
+# ==========================================
+# These values are used when a category doesn't specify its own.
+# Categories can override any of these settings.
+
+defaults:
+  # Step 1: Segmentation defaults
+  segmentation:
+    confidence_threshold: 0.5         # Min score for detected objects (0.0-1.0)
+  
+  # Step 2: Point cloud extraction defaults
+  extraction:
+    save_individual_masks: false      # Save per-frame point clouds
+    z_threshold: 0.05                 # Z-buffer threshold for point selection
+    depth_band_sigma: 2.0             # MADs around local median depth to keep (lower = stricter)
+    depth_patch_size: 32              # Patch size in pixels for local depth estimation
+    min_views: 10                      # Min views a point must appear in (1 = no consensus)
+    save_view_counts: false           # Save diagnostic PLY colored by view count
+    use_depth_band: true              # Pass 2: apply patch-based depth band filter
+    use_zbuffer: false                 # Pass 2: apply per-pixel z-buffer filter
+
+  # Step 2b: Connected component filtering defaults
+  filtering:
+    enabled: true                     # Set false to skip filtering entirely
+    octree_level: 11                  # Resolution: higher = finer (6-14 typical)
+    min_points_per_component: 1024    # Remove components smaller than this
+    eps_override: null                # Manual eps for DBSCAN (null = auto from octree)
+  
+  # Step 3: Point cloud healing defaults
+  healing:
+    gap_threshold: 0.01               # Max gap to bridge between fragments (meters)
+    point_resolution: 0.002           # Density of filler points (meters)
+    num_slices: 20                    # Vertical slices for gap detection
+  
+  # Step 4: Scene-wide settings (not per-category)
+  scene:
+    vertical_axis: null               # Auto-detect if null, or specify [0, 0, 1]
+    min_points: 50                    # Ignore point clouds with fewer points
+    use_boolean_union: false          # Merge overlapping STLs (requires manifold3d)
+
+# ==========================================
+# OBJECT CATEGORIES
+# ==========================================
+# Each category runs through the full pipeline independently.
+#
+# Step 4 placement supports two modes:
+#
+#   mode: "template"    - Place a pre-made STL file at each point cloud location
+#   mode: "procedural"  - Generate mesh procedurally from point cloud dimensions
+#                         (currently only supported for 'table')
+#
+# Orientation supports two strategies (both modes):
+#
+#   use_icp: false  - Use fixed rotation_degrees from config
+#   use_icp: true   - Template: multi-angle ICP (8 candidates)
+#                      Procedural: PCA initial estimate + ICP refinement
+#
+# Output structure per category:
+#   runs/{run_id}/1_segmentation/{category}/
+#   runs/{run_id}/2_extracted/{category}/raw/
+#   runs/{run_id}/2_extracted/{category}/filtered/
+#   runs/{run_id}/3_healed/{category}/merged_groups/
+#   runs/{run_id}/4_stl/{category}/
+
+categories:
+  # ------------------------------------------
+  # CHAIR CATEGORY
+  # ------------------------------------------
+  chair:
+    enabled: true                     # Set false to skip this category
+    
+    # Input frames for segmentation (relative to project dir)
+    input:
+      frames: "input/frames/chair"
+    
+    # Step 1: Segmentation
+    segmentation:
+      prompt: "chair"                 # Text prompt for SAM3
+      confidence_threshold: 0.5
+    
+    # Step 2: Extraction
+    extraction:
+      z_threshold: 0.03               # Lower threshold = more precise selection
+      depth_band_sigma: 0.75           # Stricter for compact objects like chairs
+      depth_patch_size: 32
+      min_views: 10                    # Chairs appear in many frames — high consensus
+
+    # Step 2b: Filtering
+    filtering:
+      octree_level: 11
+      min_points_per_component: 2048
+    
+    # Step 3: Healing
+    healing:
+      gap_threshold: 0.008            # Smaller gaps for chairs
+      point_resolution: 0.001         # Finer resolution
+      num_slices: 25
+    
+    # Step 4: STL Placement
+    placement:
+      # ----- MODE -----
+      # "template" = use STL file (only supported mode for chairs)
+      # "procedural" = generate mesh (NOT supported for chairs — will error)
+      mode: "template"
+      stl_file: "chair_3.stl"         # STL file in stl_templates/
+      
+      # ----- ORIENTATION -----
+      # use_icp: false → apply fixed rotation_degrees around vertical axis
+      # use_icp: true  → test 8 candidate rotations via ICP, pick best
+      use_icp: true
+      rotation_degrees: -120             # Base rotation (used as-is when use_icp=false,
+                                      #   or as offset for ICP candidates when use_icp=true)
+      icp_threshold: 0.002            # Distance threshold for ICP correspondences (meters)
+      icp_iterations: 500             # Max ICP iterations
+      icp_fitness_threshold: 0.05     # Min fitness to accept ICP result (0-1)
+      
+      # ----- TRANSFORM -----
+      scale_adjustment: 0.8           # Multiplier on auto-calculated scale
+      z_offset: 0.0                   # Vertical offset (meters)
+
+      # ----- Z POSITIONING -----
+      # z_mode: "global_median"  — RECOMMENDED DEFAULT.  All chairs placed at the
+      #                            same Z.  Works well even for partial point clouds
+      #                            (e.g. only seat/back captured, no legs).
+      #
+      # z_mode: "floor_plane"    — For auditoriums with tiered / raked seating.
+      #                            Requires that min_z of each cloud reaches the
+      #                            actual floor or leg contact.  If legs are not
+      #                            captured, chairs will appear floating.
+      #
+      # z_mode: "per_object"     — Each chair uses its own centre Z.  Useful for
+      #                            debugging individual placements.
+      z_mode: "global_median"
+      
+      # ----- CLASSIFICATION -----
+      # Point clouds are classified by footprint ratio relative to a reference:
+      #   ratio = point_cloud_footprint / reference_footprint
+      #   < min_footprint_ratio → "undersized"
+      #   > max_footprint_ratio → "oversized"
+      #   otherwise → "normal"
+      #
+      # Reference footprint:
+      #   use_stl_footprint: true  → scaled STL footprint (recommended)
+      #   use_stl_footprint: false → single_footprint value
+      single_footprint: 0.035          # Manual footprint (m²) — used if use_stl_footprint=false
+      use_stl_footprint: false
+      min_footprint_ratio: 0.5
+      max_footprint_ratio: 1.5
+      
+      # ----- UNDERSIZED HANDLING -----
+      # false = place 1 STL at center anyway (good for partial views)
+      # true  = skip entirely (good for false positives)
+      skip_undersized: true
+      
+      # ----- OVERLAP RESOLUTION -----
+      # Merge point clouds with significant bounding-box overlap
+      # overlap_ratio = intersection_volume / smaller_object_volume
+      # Set to 0 to disable
+      merge_overlap_ratio: 0.2
+
+      # ----- MANNEQUIN (sitting person) -----
+      # Place a sitting mannequin on each chair after placement.
+      # Does NOT affect chair placement — purely additive.
+      mannequin:
+        enabled: true
+        stl_file: "person_sitting_1.stl"  # STL file in stl_templates/
+        scale_factor: 1.0                  # Extra multiplier on auto-calculated scale
+        pre_rotation: [90, 0, 0]           # [rx, ry, rz] degrees — applied BEFORE placement
+                                           # to fix STL orientation (e.g. lying→sitting)
+        position_offset: [0.0, 0.0, 0.0]  # [x, y, z] offset in chair's local frame (meters)
+                                           # x/y rotate with chair orientation, z is vertical
+
+  # ------------------------------------------
+  # TABLE CATEGORY
+  # ------------------------------------------
+  table:
+    enabled: true
+
+    input:
+      frames: "input/frames/big_table"
+    
+    # Step 1: Segmentation
+    segmentation:
+      prompt: "big table"
+      confidence_threshold: 0.5
+    
+    # Step 2: Extraction
+    extraction:
+      z_threshold: 0.05
+      depth_band_sigma: 1.25           # More permissive for large objects spanning wide depth
+      depth_patch_size: 48             # Larger patches since tables cover more pixels
+      min_views: 5                     # Tables appear in fewer frames — lower threshold
+    
+    # Step 2b: Filtering
+    filtering:
+      octree_level: 11
+      min_points_per_component: 1024
+    
+    # Step 3: Healing
+    healing:
+      gap_threshold: 0.01
+      point_resolution: 0.002
+      num_slices: 20
+    
+    # Step 4: STL Placement
+    placement:
+      # ----- MODE -----
+      # "procedural" = generate table mesh from point cloud dimensions
+      # "template"   = use STL file (set stl_file below)
+      mode: "procedural"
+      
+      # ----- ORIENTATION -----
+      # use_icp: false → apply fixed rotation_degrees around vertical axis
+      # use_icp: true  → PCA initial estimate + ICP refinement (Z-rotation only)
+      use_icp: true
+      rotation_degrees: -120          # Used when use_icp=false (or as fallback)
+      icp_threshold: 0.02             # ICP distance threshold (meters)
+      icp_iterations: 50              # Max ICP iterations
+      icp_fitness_threshold: 0.3      # Min fitness to accept ICP result (0-1)
+      
+      # ----- TRANSFORM -----
+      scale_adjustment: 1.0
+      z_offset: 0.0
+      
+      # ----- PROCEDURAL TABLE PARAMETERS -----
+      # Only used when mode: "procedural"
+      table_height: 0.2               # Fixed table height in meters
+      tabletop_thickness: 0.03        # Thickness of tabletop
+      leg_width: 0.005                # Width of square legs
+      leg_inset: 0.002                # How far legs are inset from edge
+      min_footprint: 0.02              # Skip point clouds smaller than this (m²)
+      
+      # ----- TEMPLATE PARAMETERS -----
+      # Only used when mode: "template"
+      stl_file: "table_2.stl"
+      single_footprint: 0.25
+      use_stl_footprint: true
+      min_footprint_ratio: 0.5
+      max_footprint_ratio: 2.0
+      skip_undersized: true
+      merge_overlap_ratio: 0.5
+
+# ==========================================
+# ROOM ENCLOSURE (Step 5)
+# ==========================================
+# Enclose the scene in a single box around the furniture.
+# Vents are rectangular openings cut through the ceiling.
+
+room:
+  # Room sizing: auto-computed from scene bounding box + padding
+  padding: 0.1                       # Meters of clearance around scene objects
+  height: 1.0                        # Room height (meters). null = auto from tallest object
+  headroom: 0.5                      # Extra space above tallest object (used when height is null)
+  rotation_deg: 0                    # Room rotation around Z (degrees). Set in editor or here.
+
+  # Optional: override room size explicitly [width, depth, height] in meters
+  # Centered on scene. Uncomment to use:
+  # size: [3.0, 2.0, 2.5]
+
+  # ---- Floor type ----
+  # floor_type: "flat"        → standard box room (default)
+  # floor_type: "auditorium"  → inclined back floor + flat section + stage at front
+  floor_type: "flat"
+
+  # Auditorium floor parameters (only used when floor_type: "auditorium"):
+  # stage_depth: 0.2                 # Front-to-back depth of stage (meters)
+  # stage_height: 0.05               # Height of stage surface above base floor (meters)
+  # flat_depth: 0.3                  # Depth of flat floor behind stage (meters)
+  # floor_tilt_deg: null             # null = auto from chairs, number = manual degrees
+
+  # Vent creation toggle (false by default)
+  vents_enabled: false
+
+  # Vent definitions (only used when vents_enabled: true)
+  # Each vent needs: type (inlet/outlet), size [width, depth], position [x, y]
+  # Position is in world coordinates (same as scene). Cut through ceiling.
+  vents:
+    - type: inlet
+      position: [-0.5, -0.5]         # [x, y] center of vent on ceiling
+      size: [0.3, 0.15]              # [width, depth] of opening
+    
+    - type: outlet
+      position: [0.5, -0.5]
+      size: [0.3, 0.15]
+
+# ==========================================
+# USAGE EXAMPLES
+# ==========================================
+#
+# Run full pipeline for all enabled categories:
+#   python run_pipeline.py --config ../configs/default.yaml
+#
+# Run only specific steps:
+#   python run_pipeline.py --config ../configs/default.yaml --steps 4
+#   python run_pipeline.py --config ../configs/default.yaml --steps 2b,3,4
+#
+# Run only specific category:
+#   python run_pipeline.py --config ../configs/default.yaml --categories chair
+#   python run_pipeline.py --config ../configs/default.yaml --categories table --steps 4
+#
+# Run step 4 standalone (handles both template and procedural):
+#   python 4_create_stl.py --config ../configs/default.yaml
+#   python 4_create_stl.py --config ../configs/default.yaml --categories chair -v
+#   python 4_create_stl.py --config ../configs/default.yaml --categories table -v
+#
+# Combine existing category STLs:
+#   python run_pipeline.py --config ../configs/default.yaml --combine-only
+
+# # Full pipeline including room enclosure
+# python run_pipeline.py --config ../configs/default.yaml
+
+# # Only step 5 (room enclosure) using existing scene_combined.stl
+# python run_pipeline.py --config ../configs/default.yaml --steps 5
+
+# # Steps 4 and 5
+# python run_pipeline.py --config ../configs/default.yaml --steps 4,5 --categories chair,table
+
+# # Still works standalone too
+# python 5_enclose_scene.py --config ../configs/default.yaml

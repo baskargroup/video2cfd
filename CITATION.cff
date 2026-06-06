@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the associated paper."
+title: "video2cfd: 360-degree video to CFD-ready 3D geometry"
+abstract: >-
+  A semi-automated pipeline that converts 360-degree indoor video into
+  individually editable, simulation-ready STL geometry for CFD, via NeRF
+  reconstruction, SAM 3 concept-prompted segmentation, multi-view consensus and
+  depth-band point-cloud filtering, octree-based instance extraction,
+  graph-based healing, and template/procedural STL generation.
+authors:
+  # TODO: replace with the full author list before public release.
+  - family-names: "REPLACE-ME"
+    given-names: "REPLACE-ME"
+license: MIT
+repository-code: "https://github.com/baskargroup/video2cfd"
+preferred-citation:
+  type: article
+  title: "End-to-End Automated Classroom Reconstruction for CFD"
+  authors:
+    - family-names: "REPLACE-ME"
+      given-names: "REPLACE-ME"
+  year: 2026
+  # journal / doi: add on publication

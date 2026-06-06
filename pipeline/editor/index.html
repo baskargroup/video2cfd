@@ -1,0 +1,2845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video2STL Scene Editor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; overflow: hidden; }
+
+  #canvas-container { position: absolute; top: 0; left: 0; right: 300px; bottom: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* Right sidebar */
+  #sidebar {
+    position: absolute; top: 0; right: 0; width: 300px; bottom: 0;
+    background: #16213e; border-left: 1px solid #0f3460;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  #sidebar h2 { padding: 12px 16px; background: #0f3460; font-size: 14px; font-weight: 600; letter-spacing: 0.5px; }
+
+  #object-list {
+    flex: 1; overflow-y: auto; padding: 4px 0;
+  }
+  #object-list::-webkit-scrollbar { width: 6px; }
+  #object-list::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+
+  .obj-item {
+    padding: 8px 16px; cursor: pointer; border-bottom: 1px solid #0f346033;
+    display: flex; align-items: center; gap: 8px; font-size: 12px;
+    transition: background 0.15s;
+  }
+  .obj-item:hover { background: #1a1a4e; }
+  .obj-item.selected { background: #e94560; color: #fff; }
+  .obj-item.deleted { opacity: 0.35; text-decoration: line-through; }
+  .obj-item .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .obj-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .obj-item .fitness { font-size: 10px; color: #888; }
+
+  /* Properties panel */
+  #props-panel {
+    border-top: 1px solid #0f3460; padding: 12px 16px;
+    background: #0d1b3e; overflow-y: auto; max-height: 320px; flex-shrink: 0;
+  }
+  #props-panel::-webkit-scrollbar { width: 4px; }
+  #props-panel::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 2px; }
+  #props-panel h3 { font-size: 12px; margin-bottom: 10px; color: #e94560; }
+  #props-panel .prop-row {
+    display: flex; align-items: center; margin-bottom: 6px; font-size: 12px;
+  }
+  #props-panel .prop-row label { width: 80px; color: #888; flex-shrink: 0; }
+  #props-panel .prop-row input[type="number"] {
+    flex: 1; background: #16213e; border: 1px solid #0f3460; color: #e0e0e0;
+    padding: 4px 6px; border-radius: 3px; font-size: 12px; width: 0;
+  }
+  #props-panel .prop-row input[type="range"] { flex: 1; }
+  #props-panel .prop-row .val { width: 55px; text-align: right; font-size: 11px; color: #aaa; margin-left: 4px; }
+
+  /* Mannequin panel */
+  #mann-panel {
+    border-top: 1px solid #0f3460; padding: 10px 16px;
+    background: #0d1b3e;
+  }
+  #mann-panel h3 { font-size: 12px; margin-bottom: 8px; color: #ff8c42; cursor: pointer; user-select: none; }
+  #mann-panel .prop-row {
+    display: flex; align-items: center; margin-bottom: 5px; font-size: 11px;
+  }
+  #mann-panel .prop-row label { width: 70px; color: #888; flex-shrink: 0; }
+  #mann-panel .prop-row input[type="number"] {
+    flex: 1; background: #16213e; border: 1px solid #0f3460; color: #e0e0e0;
+    padding: 3px 5px; border-radius: 3px; font-size: 11px; width: 0;
+  }
+  #mann-panel .prop-row .val { width: 35px; text-align: right; font-size: 10px; color: #aaa; margin-left: 3px; }
+  #mann-panel.hidden-content .mann-fields { display: none; }
+  #mann-panel h3 .toggle-arrow { float: right; transition: transform 0.2s; }
+  #mann-panel.hidden-content h3 .toggle-arrow { transform: rotate(-90deg); }
+
+  /* Room panel */
+  #room-panel {
+    padding: 8px 16px; border-top: 1px solid #0f3460; flex-shrink: 0;
+  }
+  #room-panel h3 { font-size: 12px; margin-bottom: 8px; color: #2d6a4f; cursor: pointer; user-select: none; }
+  #room-panel h3 .toggle-arrow { float: right; transition: transform 0.2s; }
+  #room-panel.hidden-content h3 .toggle-arrow { transform: rotate(-90deg); }
+  #room-panel .prop-row {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12px;
+  }
+  #room-panel .prop-row label { width: 70px; color: #888; flex-shrink: 0; }
+  #room-panel .prop-row input[type="number"] {
+    flex: 1; background: #16213e; border: 1px solid #0f3460; color: #e0e0e0;
+    padding: 3px 6px; border-radius: 3px; font-size: 12px;
+  }
+  #room-panel .prop-row input[type="range"] { flex: 1; }
+  #room-panel .prop-row .val { width: 45px; text-align: right; font-size: 10px; color: #aaa; margin-left: 3px; }
+  #room-panel.hidden-content .room-fields { display: none; }
+  .audi-fields { display: none; }
+  .audi-fields.visible { display: contents; }
+
+  .btn {
+    padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer;
+    font-size: 12px; font-weight: 500; transition: background 0.15s;
+  }
+  .btn-danger { background: #e94560; color: #fff; }
+  .btn-danger:hover { background: #c73a52; }
+  .btn-restore { background: #533483; color: #fff; }
+  .btn-restore:hover { background: #6a42a5; }
+  .btn-save { background: #0f3460; color: #fff; }
+  .btn-save:hover { background: #154785; }
+  .btn-success { background: #2d6a4f; color: #fff; }
+  .btn-success:hover { background: #3a8a65; }
+  .btn-group { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+
+  /* Top bar */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 300px; height: 44px;
+    background: rgba(15, 52, 96, 0.9); backdrop-filter: blur(6px);
+    display: flex; align-items: center; padding: 0 16px; gap: 12px;
+    z-index: 10; border-bottom: 1px solid #0f3460;
+  }
+  #topbar .title { font-weight: 600; font-size: 14px; }
+  #topbar .stats { font-size: 12px; color: #888; }
+  #topbar .spacer { flex: 1; }
+
+  /* Transform mode buttons */
+  .mode-btn {
+    padding: 4px 10px; border: 1px solid #0f3460; background: transparent;
+    color: #e0e0e0; border-radius: 3px; cursor: pointer; font-size: 12px;
+  }
+  .mode-btn.active { background: #e94560; border-color: #e94560; }
+
+  /* Toast notification */
+  #toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(calc(-50% - 150px));
+    background: #2d6a4f; color: #fff; padding: 10px 20px; border-radius: 6px;
+    font-size: 13px; opacity: 0; transition: opacity 0.3s; z-index: 100;
+    pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+
+  /* Help overlay */
+  #help-overlay {
+    position: absolute; top: 44px; left: 0; right: 300px; bottom: 0;
+    background: rgba(0,0,0,0.85); z-index: 50; display: none;
+    padding: 40px; overflow-y: auto;
+  }
+  #help-overlay.show { display: block; }
+  #help-overlay h3 { color: #e94560; margin: 16px 0 8px; font-size: 14px; }
+  #help-overlay p, #help-overlay li { font-size: 13px; line-height: 1.6; color: #ccc; }
+  #help-overlay kbd {
+    background: #0f3460; padding: 2px 6px; border-radius: 3px; font-size: 11px;
+  }
+
+  /* Loading */
+  #loading {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: #1a1a2e; display: flex; align-items: center; justify-content: center;
+    z-index: 200; font-size: 16px;
+  }
+  #loading.hidden { display: none; }
+
+  /* Template browser modal */
+  #template-modal {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8); z-index: 150; display: none;
+    align-items: center; justify-content: center;
+  }
+  #template-modal.show { display: flex; }
+  #template-modal .modal-content {
+    background: #16213e; border: 1px solid #0f3460; border-radius: 8px;
+    padding: 20px; width: 400px; max-height: 70vh; display: flex; flex-direction: column;
+  }
+  #template-modal h3 { color: #e94560; margin-bottom: 12px; font-size: 14px; }
+  #template-list {
+    flex: 1; overflow-y: auto; margin-bottom: 12px;
+  }
+  #template-list::-webkit-scrollbar { width: 6px; }
+  #template-list::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+  .tpl-item {
+    padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #0f346033;
+    font-size: 12px; display: flex; align-items: center; gap: 8px;
+    transition: background 0.15s;
+  }
+  .tpl-item:hover { background: #1a1a4e; }
+  .tpl-item .tpl-name { flex: 1; }
+  .tpl-item .tpl-info { font-size: 10px; color: #888; }
+
+  .obj-item.added .dot { border: 2px solid #ff8c42; background: transparent !important; }
+  .obj-item.added-procedural .dot { border: 2px solid #69db7c; background: transparent !important; }
+
+  /* Procedural table modal */
+  #procedural-modal {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8); z-index: 150; display: none;
+    align-items: center; justify-content: center;
+  }
+  #procedural-modal.show { display: flex; }
+  #procedural-modal .modal-content {
+    background: #16213e; border: 1px solid #0f3460; border-radius: 8px;
+    padding: 20px; width: 340px; display: flex; flex-direction: column; gap: 8px;
+  }
+  #procedural-modal h3 { color: #69db7c; margin-bottom: 4px; font-size: 14px; }
+  #procedural-modal .modal-section { font-size: 11px; color: #888; margin: 6px 0 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+  #procedural-modal .prop-row {
+    display: flex; align-items: center; margin-bottom: 4px; font-size: 12px;
+  }
+  #procedural-modal .prop-row label { width: 120px; color: #888; flex-shrink: 0; }
+  #procedural-modal .prop-row input[type="number"] {
+    flex: 1; background: #1a1a2e; border: 1px solid #0f3460; color: #e0e0e0;
+    padding: 4px 6px; border-radius: 3px; font-size: 12px;
+  }
+  #procedural-modal .prop-row .val { width: 25px; text-align: right; font-size: 11px; color: #888; margin-left: 4px; }
+
+  /* Procedural dimensions section inside props panel */
+  .proc-dims-section { margin-top: 6px; }
+  .proc-dims-section .section-label {
+    font-size: 10px; color: #69db7c; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 5px; margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">Loading scene...</div>
+
+<div id="topbar">
+  <span class="title">Scene Editor</span>
+  <span class="stats" id="stats-text">—</span>
+  <span class="spacer"></span>
+  <button class="mode-btn active" data-mode="translate" title="Translate (W)">Move</button>
+  <button class="mode-btn" data-mode="rotate" title="Rotate (E)">Rotate</button>
+  <button class="btn btn-restore" onclick="openTemplateModal()" title="Add STL from template library">+ Add</button>
+  <button class="btn" style="background:#1a5c3a;color:#fff;" onclick="openProceduralModal()" title="Add a new procedural table">+ Procedural Table</button>
+  <button class="btn btn-save" onclick="saveEdits()" title="Ctrl+S">Save</button>
+  <button class="btn btn-success" onclick="saveAndRebuild()" title="Save + rebuild STLs">Save &amp; Rebuild</button>
+  <button class="mode-btn active" id="grid-toggle" onclick="toggleGrid()" title="Toggle Z=0 grid (G)">Grid</button>
+  <button class="mode-btn" onclick="toggleHelp()" title="?">?</button>
+</div>
+
+<div id="canvas-container"></div>
+
+<div id="sidebar">
+  <h2>OBJECTS <span id="obj-count"></span></h2>
+  <div id="object-list"></div>
+  <div id="props-panel">
+    <h3 id="props-title">No selection</h3>
+    <div id="props-content"></div>
+  </div>
+  <div id="mann-panel" style="display:none;" class="hidden-content">
+    <h3 onclick="toggleMannPanel()">MANNEQUINS <span class="toggle-arrow">▼</span></h3>
+    <div class="mann-fields">
+      <div class="prop-row">
+        <label>Occupancy</label>
+        <input type="range" min="0" max="100" step="5" id="mann-occupancy" value="100"
+               oninput="onOccupancyChange()" style="flex:1;">
+        <span class="val" id="mann-occupancy-val">100%</span>
+      </div>
+      <div class="prop-row">
+        <label>Seed</label>
+        <input type="number" step="1" min="0" id="mann-seed" style="width:60px;"
+               onchange="onOccupancySeedChange()">
+        <button class="btn btn-restore" onclick="randomizeSeed()" style="padding:2px 8px;font-size:11px;" title="New random selection">Shuffle</button>
+      </div>
+      <div class="prop-row">
+        <label>Scale</label>
+        <input type="number" step="0.05" id="mann-scale" value="1.0" onchange="onMannChange()">
+      </div>
+      <div class="prop-row">
+        <label>Rotation Z</label>
+        <input type="number" step="5" id="mann-rot-z" value="0" onchange="onMannChange()">
+        <span class="val">deg</span>
+      </div>
+      <div class="prop-row">
+        <label>Offset X</label>
+        <input type="number" step="0.005" id="mann-off-x" value="0" onchange="onMannChange()">
+        <span class="val">m</span>
+      </div>
+      <div class="prop-row">
+        <label>Offset Y</label>
+        <input type="number" step="0.005" id="mann-off-y" value="0" onchange="onMannChange()">
+        <span class="val">m</span>
+      </div>
+      <div class="prop-row">
+        <label>Offset Z</label>
+        <input type="number" step="0.005" id="mann-off-z" value="0" onchange="onMannChange()">
+        <span class="val">m</span>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-restore" onclick="resetMannAdjustments()">Reset</button>
+      </div>
+    </div>
+  </div>
+  <div id="room-panel" class="hidden-content">
+    <h3 onclick="toggleRoomPanel()">ROOM ENCLOSURE <span class="toggle-arrow">▼</span></h3>
+    <div class="room-fields">
+      <div class="prop-row">
+        <label>Preview</label>
+        <button class="btn btn-restore" id="room-preview-btn" onclick="toggleRoomPreview()"
+                style="padding:2px 10px;font-size:11px;">Show</button>
+        <button class="btn btn-save" onclick="refreshRoomPreview()"
+                style="padding:2px 10px;font-size:11px;" title="Recompute after moving furniture">Refresh</button>
+      </div>
+      <div class="prop-row">
+        <label>Rotation</label>
+        <input type="range" min="-180" max="180" step="1" id="room-rotation" value="0"
+               oninput="onRoomRotationChange()" style="flex:1;">
+        <span class="val" id="room-rotation-val">0°</span>
+      </div>
+      <div class="prop-row">
+        <label></label>
+        <input type="number" step="1" id="room-rotation-num" value="0"
+               onchange="onRoomRotationNumChange()" style="width:60px;">
+        <span class="val">deg</span>
+      </div>
+      <div class="prop-row">
+        <label>Padding</label>
+        <input type="number" step="0.05" id="room-padding" value="0.1"
+               onchange="onRoomConfigChange()">
+        <span class="val">m</span>
+      </div>
+      <div class="prop-row">
+        <label>Height</label>
+        <input type="number" step="0.1" id="room-height" value="1.0"
+               onchange="onRoomConfigChange()">
+        <span class="val">m</span>
+      </div>
+      <div class="prop-row">
+        <label>Floor</label>
+        <select id="room-floor-type" onchange="onRoomFloorTypeChange()"
+                style="flex:1;background:#16213e;border:1px solid #0f3460;color:#e0e0e0;padding:3px 6px;border-radius:3px;font-size:12px;">
+          <option value="flat">Flat (box)</option>
+          <option value="auditorium">Auditorium</option>
+        </select>
+      </div>
+      <div class="audi-fields" id="audi-fields">
+        <div class="prop-row">
+          <label>Stage D</label>
+          <input type="number" step="0.05" id="room-stage-depth" value="0.2"
+                 onchange="onRoomConfigChange()">
+          <span class="val">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Stage H</label>
+          <input type="number" step="0.01" id="room-stage-height" value="0.05"
+                 onchange="onRoomConfigChange()">
+          <span class="val">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Flat D</label>
+          <input type="number" step="0.05" id="room-flat-depth" value="0.3"
+                 onchange="onRoomConfigChange()">
+          <span class="val">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Tilt</label>
+          <input type="number" step="0.5" id="room-tilt" value=""
+                 placeholder="auto" onchange="onRoomConfigChange()">
+          <button class="btn btn-restore" id="tilt-recalc-btn" onclick="recalcFloorTilt()"
+                  style="padding:2px 8px;font-size:11px;flex-shrink:0;" title="Recalculate tilt from chairs in inclined section">↻</button>
+          <span class="val">deg</span>
+        </div>
+      </div>
+      <div class="prop-row" id="room-dims" style="font-size:11px;color:#888;">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="help-overlay">
+  <h3>Controls</h3>
+  <ul>
+    <li><kbd>Left click</kbd> — Select object</li>
+    <li><kbd>Right drag</kbd> — Orbit camera</li>
+    <li><kbd>Middle drag / Scroll</kbd> — Pan / Zoom</li>
+    <li><kbd>W</kbd> — Translate mode</li>
+    <li><kbd>E</kbd> — Rotate mode</li>
+    <li><kbd>Delete</kbd> / <kbd>Backspace</kbd> — Delete selected object</li>
+    <li><kbd>Ctrl+Z</kbd> — Undo last action</li>
+    <li><kbd>Ctrl+C</kbd> — Copy selected object</li>
+    <li><kbd>Ctrl+V</kbd> — Paste copy (offset to the side, same Z &amp; rotation)</li>
+    <li><kbd>Ctrl+D</kbd> — Duplicate selected (copy + paste in one step)</li>
+    <li><kbd>Ctrl+S</kbd> — Save edits</li>
+    <li><kbd>Escape</kbd> — Deselect / Close help</li>
+    <li><kbd>G</kbd> — Toggle Z=0 grid</li>
+    <li><kbd>?</kbd> — Toggle this help</li>
+    <li><kbd>+ Add</kbd> button — Add STL from template library (mannequins, furniture, etc.)</li>
+    <li><strong>Room panel</strong> — Preview and rotate the room enclosure box (Step 5)</li>
+  </ul>
+  <h3>Workflow</h3>
+  <p>1. Click objects to select them. Use the Move/Rotate gizmos or the properties panel to adjust.</p>
+  <p>2. Delete false positives with the Delete key or the sidebar button.</p>
+  <p>3. Use <strong>+ Add</strong> to place additional STL templates (mannequins, furniture). They are auto-scaled to match the scene.</p>
+  <p>3b. Use <strong>+ Procedural Table</strong> to add a new geometry-generated table. Select it to edit its dimensions and click <strong>Regenerate</strong> to update the mesh. For existing procedural tables from Step 4, select them to see and edit their dimensions inline.</p>
+  <p>4. Click <strong>Save</strong> to write edited placements, or <strong>Save &amp; Rebuild</strong> to also regenerate the combined STLs.</p>
+  <p style="margin-top:16px;color:#888;">Click anywhere or press <kbd>?</kbd> / <kbd>Esc</kbd> to close.</p>
+</div>
+
+<div id="template-modal">
+  <div class="modal-content">
+    <h3>Add from Template Library</h3>
+    <div id="template-list">Loading templates...</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-save" onclick="closeTemplateModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="procedural-modal">
+  <div class="modal-content">
+    <h3>Add Procedural Table</h3>
+    <div class="modal-section">Dimensions</div>
+    <div class="prop-row">
+      <label>Width (X)</label>
+      <input type="number" id="proc-width" step="0.05" min="0.1" value="1.2">
+      <span class="val">m</span>
+    </div>
+    <div class="prop-row">
+      <label>Depth (Y)</label>
+      <input type="number" id="proc-depth" step="0.05" min="0.1" value="0.6">
+      <span class="val">m</span>
+    </div>
+    <div class="prop-row">
+      <label>Height</label>
+      <input type="number" id="proc-height" step="0.01" min="0.1" value="0.75">
+      <span class="val">m</span>
+    </div>
+    <div class="modal-section">Advanced</div>
+    <div class="prop-row">
+      <label>Top thickness</label>
+      <input type="number" id="proc-top-thick" step="0.005" min="0.005" value="0.03">
+      <span class="val">m</span>
+    </div>
+    <div class="prop-row">
+      <label>Leg width</label>
+      <input type="number" id="proc-leg-w" step="0.005" min="0.01" value="0.05">
+      <span class="val">m</span>
+    </div>
+    <div class="prop-row">
+      <label>Leg inset</label>
+      <input type="number" id="proc-leg-inset" step="0.005" min="0" value="0.02">
+      <span class="val">m</span>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn btn-save" onclick="closeProceduralModal()">Cancel</button>
+      <button class="btn btn-success" onclick="onAddProceduralTable()">Add Table</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Three.js from CDN -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+// ============================================================================
+// GLOBALS
+// ============================================================================
+let scene, camera, renderer, orbitControls, transformControls, grid;
+let raycaster, mouse;
+let sceneData = {};        // { category: scene_log.json data }
+let objectMeshes = [];     // [{ mesh, category, index, placement, deleted }]
+let addedObjects = [];     // [{ mesh, template_file, position, rotation_degrees, scale, deleted }]
+let addedProceduralObjects = []; // [{ mesh, dimensions, position, rotation_degrees, deleted }]
+let clipboard = null;            // { type, ...fields } — in-memory copy of last copied object
+let mannequinMeshes = [];  // [{ mesh, category, originalPos }] — non-editable, adjusted globally
+let mannequinGroup = null; // THREE.Group for global transforms
+let mannAdjustments = { scale_factor: 1.0, rotation_z: 0, offset_x: 0, offset_y: 0, offset_z: 0, occupancy_pct: 100 };
+let mannOccupancySeed = Math.floor(Math.random() * 10000);  // stable random for occupancy selection
+let mannOccupiedSet = new Set();  // indices of mannequins currently "occupied"
+let roomPreviewBox = null;       // THREE.LineSegments wireframe for room preview
+let roomConfig = { rotation_deg: 0, padding: 0.1, height: 1.0,
+                   floor_type: 'flat', stage_depth: 0.2, stage_height: 0.05,
+                   flat_depth: 0.3, floor_tilt_deg: null };
+let autoFloorTiltDeg = null;  // server-computed tilt when floor_tilt_deg is null
+let selectedObj = null;
+let undoStack = [];
+const CATEGORY_COLORS = {
+  chair:  0x4dabf7,
+  table:  0x69db7c,
+  desk:   0xffd43b,
+  screen: 0xda77f2,
+  board:  0xffa94d,
+};
+const DEFAULT_COLOR = 0x4dabf7;
+const SELECTED_COLOR = 0xe94560;
+const DELETED_OPACITY = 0.15;
+
+// ============================================================================
+// INIT
+// ============================================================================
+async function init() {
+  const container = document.getElementById('canvas-container');
+
+  // Scene
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1a2e);
+
+  // Camera
+  camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.001, 100);
+  camera.position.set(0, -1, 0.8);
+  camera.up.set(0, 0, 1);
+
+  // Renderer
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  container.appendChild(renderer.domElement);
+
+  // Lights
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambient);
+  const dir1 = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir1.position.set(1, -1, 2);
+  scene.add(dir1);
+  const dir2 = new THREE.DirectionalLight(0x8888ff, 0.3);
+  dir2.position.set(-1, 1, 0.5);
+  scene.add(dir2);
+
+  // Grid
+  grid = new THREE.GridHelper(4, 40, 0x333355, 0x222244);
+  grid.rotation.x = Math.PI / 2;  // Z-up
+  scene.add(grid);
+
+  // Axes
+  const axes = new THREE.AxesHelper(0.3);
+  scene.add(axes);
+
+  // Orbit controls
+  orbitControls = new OrbitControls(camera, renderer.domElement);
+  orbitControls.enableDamping = true;
+  orbitControls.dampingFactor = 0.1;
+  orbitControls.mouseButtons = {
+    LEFT: null,  // We handle left-click for selection
+    MIDDLE: THREE.MOUSE.PAN,
+    RIGHT: THREE.MOUSE.ROTATE,
+  };
+  orbitControls.target.set(0, 0, -0.3);
+
+  // Transform controls
+  transformControls = new TransformControls(camera, renderer.domElement);
+  transformControls.setSize(0.5);
+  transformControls.space = 'local';
+  scene.add(transformControls.getHelper());
+
+  transformControls.addEventListener('dragging-changed', (e) => {
+    orbitControls.enabled = !e.value;
+  });
+
+  transformControls.addEventListener('objectChange', () => {
+    if (selectedObj) {
+      updatePropsFromMesh();
+      // Update mannequins if the moved object is a chair with a paired mannequin
+      if (mannequinMeshes.some(m => m.chairEntry === selectedObj)) {
+        applyMannAdjustments();
+      }
+    }
+  });
+
+  // Raycaster
+  raycaster = new THREE.Raycaster();
+  mouse = new THREE.Vector2();
+
+  // Events
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('resize', onResize);
+
+  // Mode buttons
+  document.querySelectorAll('.mode-btn[data-mode]').forEach(btn => {
+    btn.addEventListener('click', () => setTransformMode(btn.dataset.mode));
+  });
+
+  // Load scene
+  await loadScene();
+  document.getElementById('loading').classList.add('hidden');
+
+  // Fit camera
+  fitCamera();
+
+  // Animate
+  animate();
+}
+
+// ============================================================================
+// SCENE LOADING
+// ============================================================================
+async function loadScene() {
+  // Fetch manifest from server
+  const resp = await fetch('/api/manifest');
+  const manifest = await resp.json();
+
+  const stlLoader = new STLLoader();
+  let totalLoaded = 0;
+
+  for (const cat of manifest.categories) {
+    // Load scene_log for this category
+    const logResp = await fetch(`/api/scene_log/${cat.name}`);
+    const logData = await logResp.json();
+    sceneData[cat.name] = logData;
+
+    const color = CATEGORY_COLORS[cat.name] || DEFAULT_COLOR;
+
+    // Load all individual STLs in parallel.
+    // Server always serves the original scene_log.json (previous edits are
+    // cleaned on launch), so placements[i] matches individual STL file i.
+    const objResults = await Promise.all(cat.objects.map(async (objFile, i) => {
+      const placement = logData.placements[i];
+      if (!placement) return null;
+      try {
+        const geometry = await loadSTL(stlLoader, `/stl/${cat.name}/individual/${objFile}`);
+        return { geometry, objFile, placement, i };
+      } catch (e) {
+        console.warn(`Failed to load ${objFile}:`, e);
+        return null;
+      }
+    }));
+
+    for (const result of objResults) {
+      if (!result) continue;
+      const { geometry, objFile, placement, i } = result;
+
+      geometry.computeVertexNormals();
+
+      // Re-center geometry so the mesh origin is at the object's bounding box center.
+      // This ensures rotation pivots around the object itself, not the world origin.
+      geometry.computeBoundingBox();
+      const center = new THREE.Vector3();
+      geometry.boundingBox.getCenter(center);
+      geometry.translate(-center.x, -center.y, -center.z);
+
+      const material = new THREE.MeshPhongMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.copy(center);
+      scene.add(mesh);
+
+      objectMeshes.push({
+        mesh,
+        category: cat.name,
+        index: i,
+        filename: objFile,
+        placement: { ...placement },
+        originalPlacement: { ...placement },
+        bakedCenter: center.clone(),
+        deleted: false,
+      });
+      totalLoaded++;
+    }
+  }
+
+  // ---- Load mannequins ----
+  // Mannequin STLs in mannequins/ are CLEAN Step 4 output — config values
+  // (scale_factor, position_offset) are baked into vertex positions, but
+  // NO editor adjustments are baked in.  4b_edit_scene.py:regenerate_mannequins()
+  // guarantees this by re-running placement from individual/ on every launch.
+  //
+  // applyMannAdjustments() later applies editor deltas (scale, offsets,
+  // rotation_z) on top of these clean originalVertices.  Neutral defaults
+  // (scale=1, offsets=0) reproduce the Step 4 output exactly.
+  //
+  // Mannequin-to-chair pairing: mannequin_001 ↔ chair index 0 (1:1 by index).
+  for (const cat of manifest.categories) {
+    const mannequins = cat.mannequins || [];
+    const logData = sceneData[cat.name];
+
+    // Load all mannequins in parallel.
+    const mannResults = await Promise.all(mannequins.map(async (mannFile, mi) => {
+      const chairRotDeg = (logData && logData.placements && logData.placements[mi])
+        ? (logData.placements[mi].rotation_degrees || 0)
+        : 0;
+      try {
+        const geometry = await loadSTL(stlLoader, `/stl/${cat.name}/mannequins/${mannFile}`);
+        return { geometry, mannFile, mi, chairRotDeg };
+      } catch (e) {
+        console.warn(`Failed to load mannequin ${mannFile}:`, e);
+        return null;
+      }
+    }));
+
+    for (const result of mannResults) {
+      if (!result) continue;
+      const { geometry, mannFile, mi, chairRotDeg } = result;
+
+      geometry.computeVertexNormals();
+
+      const material = new THREE.MeshPhongMaterial({
+        color: 0xff8c42,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+
+      // AABB center used as pivot for scale/rotation in applyMannAdjustments()
+      geometry.computeBoundingBox();
+      const center = new THREE.Vector3();
+      geometry.boundingBox.getCenter(center);
+
+      scene.add(mesh);
+
+      const pairedChair = objectMeshes.find(
+        o => o.category === cat.name && o.index === mi
+      );
+
+      mannequinMeshes.push({
+        mesh,
+        category: cat.name,
+        filename: mannFile,
+        originalVertices: geometry.attributes.position.array.slice(),
+        center: center.clone(),
+        chairRotDeg,
+        chairEntry: pairedChair || null,
+      });
+    }
+  }
+
+  // Show mannequin panel if mannequins were loaded
+  if (mannequinMeshes.length > 0) {
+    document.getElementById('mann-panel').style.display = '';
+    document.getElementById('mann-seed').value = mannOccupancySeed;
+    // mannAdjustments starts at neutral defaults (scale=1, offsets=0).
+    // DO NOT load config values here — config is already baked into the
+    // STL vertices.  Loading config would double-apply them.
+    // Continue mode may restore non-neutral values later (see below).
+    recomputeOccupiedSet();
+    applyMannAdjustments();
+  }
+
+  // Load room config from server
+  try {
+    const rcResp = await fetch('/api/room_config');
+    const rc = await rcResp.json();
+    roomConfig.rotation_deg  = rc.rotation_deg  ?? 0;
+    roomConfig.padding        = rc.padding        ?? 0.1;
+    roomConfig.height         = rc.height         ?? 1.0;
+    roomConfig.floor_type     = rc.floor_type     ?? 'flat';
+    roomConfig.stage_depth    = rc.stage_depth    ?? 0.2;
+    roomConfig.stage_height   = rc.stage_height   ?? 0.05;
+    roomConfig.flat_depth     = rc.flat_depth     ?? 0.3;
+    roomConfig.floor_tilt_deg = rc.floor_tilt_deg ?? null;
+    autoFloorTiltDeg = rc.auto_tilt_deg ?? null;
+    document.getElementById('room-rotation').value = roomConfig.rotation_deg;
+    document.getElementById('room-rotation-val').textContent = roomConfig.rotation_deg + '°';
+    document.getElementById('room-rotation-num').value = roomConfig.rotation_deg;
+    document.getElementById('room-padding').value = roomConfig.padding;
+    document.getElementById('room-height').value = roomConfig.height;
+    _applyRoomConfigToUI();
+  } catch (e) {
+    console.warn('Could not load room config:', e);
+  }
+
+  // --- Restore previous edits if --continue mode ---
+  try {
+    const prevResp = await fetch('/api/previous_edits');
+    const prev = await prevResp.json();
+    if (prev.continue) {
+      console.log('Restoring previous edits...');
+
+      // Build lookup: source → edited placement or "deleted"
+      const editedMap = {};  // { "category:source": { placement, deleted } }
+      for (const [catName, catData] of Object.entries(prev.categories || {})) {
+        for (const p of (catData.placements || [])) {
+          editedMap[catName + ':' + p.source] = { placement: p, deleted: false };
+        }
+        for (const p of (catData.deleted || [])) {
+          editedMap[catName + ':' + p.source] = { placement: p, deleted: true };
+        }
+      }
+
+      // Apply edits to loaded objects
+      for (const entry of objectMeshes) {
+        const key = entry.category + ':' + entry.placement.source;
+        const edit = editedMap[key];
+        if (!edit) continue;
+
+        if (edit.deleted) {
+          // Mark as deleted
+          entry.deleted = true;
+          entry.mesh.material.opacity = DELETED_OPACITY;
+          entry.mesh.material.color.setHex(0x666666);
+        } else {
+          // If this is a procedural object with changed dimensions, regenerate geometry
+          if (edit.placement.mode === 'procedural' && edit.placement.dimensions) {
+            const savedDims = edit.placement.dimensions;
+            const origDims = entry.originalPlacement.dimensions || {};
+            const dimKeys = ['width', 'depth', 'height', 'tabletop_thickness', 'leg_width', 'leg_inset'];
+            const dimsChanged = dimKeys.some(k =>
+              Math.abs((savedDims[k] || 0) - (origDims[k] || 0)) > 1e-6
+            );
+            if (dimsChanged) {
+              try {
+                const resp = await fetch('/api/generate_procedural_table', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ dimensions: savedDims })
+                });
+                if (resp.ok) {
+                  const buf = await resp.arrayBuffer();
+                  const loader = new STLLoader();
+                  const geom = loader.parse(buf);
+                  geom.computeBoundingBox();
+                  const center = new THREE.Vector3();
+                  geom.boundingBox.getCenter(center);
+                  geom.translate(-center.x, -center.y, -center.z);
+                  entry.mesh.geometry.dispose();
+                  entry.mesh.geometry = geom;
+                  // bakedCenter stays unchanged — delta calculation must reference
+                  // the original center, not the new geometry's center
+                }
+              } catch (err) {
+                console.warn('Failed to regenerate procedural geometry for', entry.placement.source, err);
+              }
+            }
+          }
+
+          // Apply position/rotation delta from original
+          const origPos = entry.originalPlacement.position;
+          const origRot = entry.originalPlacement.rotation_degrees || 0;
+          const editedPos = edit.placement.position || origPos;
+          const editedRot = edit.placement.rotation_degrees || origRot;
+
+          const dx = editedPos[0] - origPos[0];
+          const dy = editedPos[1] - origPos[1];
+          const dz = editedPos[2] - origPos[2];
+          const dRot = editedRot - origRot;
+
+          if (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6 || Math.abs(dz) > 1e-6) {
+            entry.mesh.position.x += dx;
+            entry.mesh.position.y += dy;
+            entry.mesh.position.z += dz;
+          }
+          if (Math.abs(dRot) > 0.01) {
+            entry.mesh.rotation.z = THREE.MathUtils.degToRad(dRot);
+          }
+
+          // Do NOT update entry.placement here — keep it at original values.
+          // buildEditsPayload() computes delta = mesh.position - bakedCenter
+          // and adds it to entry.placement.position. If we updated placement
+          // to the edited position, that delta would be double-counted.
+        }
+      }
+
+      // Restore mannequin adjustments
+      if (prev.mannequin_adjustments) {
+        const ma = prev.mannequin_adjustments;
+        mannAdjustments.scale_factor = ma.scale_factor ?? 1.0;
+        mannAdjustments.rotation_z = ma.rotation_z ?? 0;
+        mannAdjustments.offset_x = ma.offset_x ?? 0;
+        mannAdjustments.offset_y = ma.offset_y ?? 0;
+        mannAdjustments.offset_z = ma.offset_z ?? 0;
+        mannAdjustments.occupancy_pct = ma.occupancy_pct ?? 100;
+        mannOccupancySeed = ma.occupancy_seed ?? mannOccupancySeed;
+
+        document.getElementById('mann-scale').value = mannAdjustments.scale_factor;
+        document.getElementById('mann-rot-z').value = mannAdjustments.rotation_z;
+        document.getElementById('mann-off-x').value = mannAdjustments.offset_x;
+        document.getElementById('mann-off-y').value = mannAdjustments.offset_y;
+        document.getElementById('mann-off-z').value = mannAdjustments.offset_z;
+        document.getElementById('mann-occupancy').value = mannAdjustments.occupancy_pct;
+        document.getElementById('mann-occupancy-val').textContent = mannAdjustments.occupancy_pct + '%';
+        document.getElementById('mann-seed').value = mannOccupancySeed;
+      }
+
+      // Always recompute mannequin positions after restoring chair edits,
+      // so mannequins follow the moved/deleted/rotated chairs.
+      recomputeOccupiedSet();
+      applyMannAdjustments();
+
+      // Restore room config
+      if (prev.room_config) {
+        const rc = prev.room_config;
+        roomConfig.rotation_deg  = rc.rotation_deg  ?? 0;
+        roomConfig.padding        = rc.padding        ?? 0.1;
+        roomConfig.height         = rc.height         ?? 1.0;
+        roomConfig.floor_type     = rc.floor_type     ?? 'flat';
+        roomConfig.stage_depth    = rc.stage_depth    ?? 0.2;
+        roomConfig.stage_height   = rc.stage_height   ?? 0.05;
+        roomConfig.flat_depth     = rc.flat_depth     ?? 0.3;
+        roomConfig.floor_tilt_deg = rc.floor_tilt_deg ?? null;
+        // auto_tilt_deg comes from the server load, not saved edits — keep existing value
+        document.getElementById('room-rotation').value = roomConfig.rotation_deg;
+        document.getElementById('room-rotation-val').textContent = roomConfig.rotation_deg + '°';
+        document.getElementById('room-rotation-num').value = roomConfig.rotation_deg;
+        document.getElementById('room-padding').value = roomConfig.padding;
+        document.getElementById('room-height').value = roomConfig.height;
+        _applyRoomConfigToUI();
+      }
+
+      // Restore added objects (template-library objects and copied placed objects)
+      if (prev.added_objects && prev.added_objects.length > 0) {
+        const stlLoader2 = new STLLoader();
+        for (const obj of prev.added_objects) {
+          try {
+            // Copies of original placed objects use individual_stl_path (served via /stl/);
+            // template-library objects use template_file (served via /template_stl/).
+            const stlUrl = obj.individual_stl_path
+              ? `/stl/${obj.individual_stl_path}`
+              : `/template_stl/${obj.template_file}`;
+            const geometry = await loadSTL(stlLoader2, stlUrl);
+            geometry.computeVertexNormals();
+            geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            geometry.translate(-center.x, -center.y, -center.z);
+
+            const material = new THREE.MeshPhongMaterial({
+              color: 0xff8c42, transparent: true, opacity: 0.85,
+              side: THREE.DoubleSide,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(obj.position[0], obj.position[1], obj.position[2]);
+            mesh.rotation.z = THREE.MathUtils.degToRad(obj.rotation_degrees || 0);
+            const s = obj.scale || 1.0;
+            mesh.scale.set(s, s, s);
+            scene.add(mesh);
+
+            const entry = {
+              mesh,
+              template_file:       obj.template_file || null,
+              individual_stl_path: obj.individual_stl_path || null,
+              label: obj.individual_stl_path
+                ? obj.individual_stl_path.split('/').pop().replace('.stl','') + ' (copy)'
+                : null,
+              position: obj.position, scale: s,
+              rotation_degrees: obj.rotation_degrees || 0,
+              deleted: obj.deleted || false, isAdded: true,
+            };
+            if (entry.deleted) {
+              entry.mesh.material.opacity = DELETED_OPACITY;
+              entry.mesh.material.color.setHex(0x666666);
+            }
+            addedObjects.push(entry);
+          } catch (err) {
+            console.warn('Could not restore added object:', obj.template_file || obj.individual_stl_path, err);
+          }
+        }
+      }
+
+      // Restore added procedural objects
+      if (prev.added_procedural_objects && prev.added_procedural_objects.length > 0) {
+        for (const obj of prev.added_procedural_objects) {
+          try {
+            const resp2 = await fetch('/api/generate_procedural_table', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dimensions: obj.dimensions }),
+            });
+            if (!resp2.ok) { console.warn('Could not restore procedural table'); continue; }
+            const buf = await resp2.arrayBuffer();
+            const geometry = (new STLLoader()).parse(buf);
+            geometry.computeVertexNormals();
+            geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            geometry.translate(-center.x, -center.y, -center.z);
+
+            const material = new THREE.MeshPhongMaterial({
+              color: 0x69db7c, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(obj.position[0], obj.position[1], obj.position[2]);
+            mesh.rotation.z = THREE.MathUtils.degToRad(obj.rotation_degrees || 0);
+            scene.add(mesh);
+
+            const entry = {
+              mesh, dimensions: { ...obj.dimensions },
+              position: obj.position,
+              rotation_degrees: obj.rotation_degrees || 0,
+              deleted: obj.deleted || false,
+              isAdded: true, isProcedural: true,
+              bakedCenter: mesh.position.clone(),
+            };
+            if (entry.deleted) {
+              entry.mesh.material.opacity = DELETED_OPACITY;
+              entry.mesh.material.color.setHex(0x666666);
+            }
+            addedProceduralObjects.push(entry);
+          } catch (e) {
+            console.warn('Could not restore added procedural table:', e);
+          }
+        }
+      }
+
+      console.log('Previous edits restored.');
+    }
+  } catch (e) {
+    console.warn('Could not fetch previous edits:', e);
+  }
+
+  updateStats();
+  buildObjectList();
+}
+
+function loadSTL(loader, url) {
+  return new Promise((resolve, reject) => {
+    loader.load(url, resolve, undefined, reject);
+  });
+}
+
+// ============================================================================
+// CAMERA
+// ============================================================================
+function fitCamera() {
+  const box = new THREE.Box3();
+  for (const entry of objectMeshes) {
+    if (!entry.deleted) box.expandByObject(entry.mesh);
+  }
+  for (const entry of addedObjects) {
+    if (!entry.deleted) box.expandByObject(entry.mesh);
+  }
+  for (const entry of addedProceduralObjects) {
+    if (!entry.deleted) box.expandByObject(entry.mesh);
+  }
+  if (box.isEmpty()) return;
+
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+
+  orbitControls.target.copy(center);
+  camera.position.set(
+    center.x + maxDim * 0.8,
+    center.y - maxDim * 1.2,
+    center.z + maxDim * 0.6
+  );
+  orbitControls.update();
+}
+
+// ============================================================================
+// SELECTION
+// ============================================================================
+function onPointerDown(e) {
+  if (e.button !== 0) return;  // Left click only
+
+  // Don't interfere with transform gizmo
+  if (transformControls.dragging) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const allActive = [
+    ...objectMeshes.filter(o => !o.deleted),
+    ...addedObjects.filter(o => !o.deleted),
+    ...addedProceduralObjects.filter(o => !o.deleted),
+  ];
+  const meshList = allActive.map(o => o.mesh);
+  const intersects = raycaster.intersectObjects(meshList);
+
+  if (intersects.length > 0) {
+    const hitMesh = intersects[0].object;
+    const entry = allActive.find(o => o.mesh === hitMesh);
+    if (entry) selectObject(entry);
+  } else {
+    deselectObject();
+  }
+}
+
+function getEntryColor(entry) {
+  if (entry.isProcedural) return 0x69db7c;
+  if (entry.isAdded) return 0xff8c42;
+  return CATEGORY_COLORS[entry.category] || DEFAULT_COLOR;
+}
+
+function selectObject(entry) {
+  // Cancel any pending auto-regenerate so it doesn't fire on the new selection
+  clearTimeout(_procDimDebounce);
+
+  // Deselect previous
+  if (selectedObj) {
+    selectedObj.mesh.material.color.setHex(getEntryColor(selectedObj));
+    selectedObj.mesh.material.emissive.setHex(0x000000);
+  }
+
+  selectedObj = entry;
+  entry.mesh.material.color.setHex(SELECTED_COLOR);
+  entry.mesh.material.emissive.setHex(0x330000);
+
+  // Attach transform controls
+  transformControls.attach(entry.mesh);
+
+  // Update sidebar
+  updateObjectListSelection();
+  updatePropsPanel();
+}
+
+function deselectObject() {
+  if (selectedObj) {
+    selectedObj.mesh.material.color.setHex(getEntryColor(selectedObj));
+    selectedObj.mesh.material.emissive.setHex(0x000000);
+    selectedObj = null;
+  }
+  transformControls.detach();
+  updateObjectListSelection();
+  updatePropsPanel();
+}
+
+// ============================================================================
+// OBJECT LIST (sidebar)
+// ============================================================================
+function buildObjectList() {
+  const list = document.getElementById('object-list');
+  list.innerHTML = '';
+
+  for (let i = 0; i < objectMeshes.length; i++) {
+    const entry = objectMeshes[i];
+    const div = document.createElement('div');
+    div.className = 'obj-item' + (entry.deleted ? ' deleted' : '');
+    div.dataset.idx = i;
+    div.dataset.type = 'original';
+
+    const color = CATEGORY_COLORS[entry.category] || DEFAULT_COLOR;
+    const hexColor = '#' + color.toString(16).padStart(6, '0');
+
+    div.innerHTML = `
+      <span class="dot" style="background:${hexColor}"></span>
+      <span class="name">${entry.category}_${(entry.index + 1).toString().padStart(3, '0')}</span>
+      <span class="fitness">${(entry.placement.icp_fitness || 0).toFixed(3)}</span>
+    `;
+
+    div.addEventListener('click', () => {
+      if (entry.deleted) return;
+      selectObject(entry);
+    });
+
+    list.appendChild(div);
+  }
+
+  // Added template objects
+  for (let i = 0; i < addedObjects.length; i++) {
+    const entry = addedObjects[i];
+    const div = document.createElement('div');
+    div.className = 'obj-item added' + (entry.deleted ? ' deleted' : '');
+    div.dataset.idx = i;
+    div.dataset.type = 'added';
+
+    const addedLabel = entry.label
+      || (entry.template_file ? entry.template_file.replace('.stl', '')
+          : entry.individual_stl_path ? entry.individual_stl_path.split('/').pop().replace('.stl','')
+          : 'object');
+    div.innerHTML = `
+      <span class="dot" style="background:transparent;border:2px solid #ff8c42;"></span>
+      <span class="name">${addedLabel}</span>
+      <span class="fitness">added</span>
+    `;
+
+    div.addEventListener('click', () => {
+      if (entry.deleted) return;
+      selectObject(entry);
+    });
+
+    list.appendChild(div);
+  }
+
+  // Added procedural objects
+  for (let i = 0; i < addedProceduralObjects.length; i++) {
+    const entry = addedProceduralObjects[i];
+    const div = document.createElement('div');
+    div.className = 'obj-item added-procedural' + (entry.deleted ? ' deleted' : '');
+    div.dataset.idx = i;
+    div.dataset.type = 'added-procedural';
+
+    const d = entry.dimensions;
+    div.innerHTML = `
+      <span class="dot" style="background:transparent;border:2px solid #69db7c;"></span>
+      <span class="name">table (${d.width.toFixed(2)}×${d.depth.toFixed(2)})</span>
+      <span class="fitness">proc</span>
+    `;
+
+    div.addEventListener('click', () => {
+      if (entry.deleted) return;
+      selectObject(entry);
+    });
+
+    list.appendChild(div);
+  }
+
+  const totalActive = objectMeshes.filter(o => !o.deleted).length
+    + addedObjects.filter(o => !o.deleted).length
+    + addedProceduralObjects.filter(o => !o.deleted).length;
+  document.getElementById('obj-count').textContent = `(${totalActive})`;
+}
+
+function updateObjectListSelection() {
+  document.querySelectorAll('#object-list .obj-item').forEach(div => {
+    const idx = parseInt(div.dataset.idx);
+    const type = div.dataset.type;
+    let list;
+    if (type === 'added') list = addedObjects;
+    else if (type === 'added-procedural') list = addedProceduralObjects;
+    else list = objectMeshes;
+    const isSelected = selectedObj && list[idx] === selectedObj;
+    div.classList.toggle('selected', isSelected);
+  });
+}
+
+// ============================================================================
+// PROPERTIES PANEL
+// ============================================================================
+function updatePropsPanel() {
+  const title = document.getElementById('props-title');
+  const content = document.getElementById('props-content');
+
+  if (!selectedObj) {
+    title.textContent = 'No selection';
+    content.innerHTML = '<p style="font-size:11px;color:#666;margin-top:8px;">Click an object to select it</p>';
+    return;
+  }
+
+  const e = selectedObj;
+  const pos = e.mesh.position;
+  const rotDeg = THREE.MathUtils.radToDeg(e.mesh.rotation.z);
+
+  if (e.isProcedural) {
+    // Added procedural table
+    const d = e.dimensions;
+    title.textContent = `Procedural Table`;
+    content.innerHTML = `
+      <div class="prop-row">
+        <label>X</label>
+        <input type="number" step="0.001" id="prop-x" value="${pos.x.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <div class="prop-row">
+        <label>Y</label>
+        <input type="number" step="0.001" id="prop-y" value="${pos.y.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <div class="prop-row">
+        <label>Z</label>
+        <input type="number" step="0.001" id="prop-z" value="${pos.z.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <div class="prop-row">
+        <label>Rotation</label>
+        <input type="number" step="1" id="prop-rot" value="${rotDeg.toFixed(1)}" onchange="onPropChange()">
+        <span class="val">deg</span>
+      </div>
+      <div class="proc-dims-section">
+        <div class="section-label">Dimensions</div>
+        <div class="prop-row">
+          <label>Width (X)</label>
+          <input type="number" step="0.05" min="0.1" id="pdim-width" value="${d.width.toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Depth (Y)</label>
+          <input type="number" step="0.05" min="0.1" id="pdim-depth" value="${d.depth.toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Height</label>
+          <input type="number" step="0.01" min="0.1" id="pdim-height" value="${d.height.toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Top thickness</label>
+          <input type="number" step="0.005" min="0.005" id="pdim-top-thick" value="${(d.tabletop_thickness||0.03).toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Leg width</label>
+          <input type="number" step="0.005" min="0.01" id="pdim-leg-w" value="${(d.leg_width||0.05).toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Leg inset</label>
+          <input type="number" step="0.005" min="0" id="pdim-leg-inset" value="${(d.leg_inset||0.02).toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-danger" onclick="deleteSelected()">Delete</button>
+        <button class="btn btn-save" onclick="copySelected()" title="Ctrl+C">Copy</button>
+        <button class="btn" style="background:#1a5c3a;color:#fff;" id="regen-btn" onclick="regenerateProceduralMesh()">Regenerate</button>
+      </div>
+    `;
+  } else if (e.isAdded) {
+    const addedLabel = e.label
+      || (e.template_file ? e.template_file.replace('.stl', '')
+          : e.individual_stl_path ? e.individual_stl_path.split('/').pop().replace('.stl','')
+          : 'object');
+    title.textContent = addedLabel;
+    const srcLabel = e.template_file || e.individual_stl_path || '';
+    content.innerHTML = `
+      <div class="prop-row">
+        <label>Source</label>
+        <span style="font-size:11px;color:#ff8c42;overflow:hidden;text-overflow:ellipsis">${srcLabel}</span>
+      </div>
+      <div class="prop-row">
+        <label>Scale</label>
+        <input type="number" step="0.01" id="prop-scale" value="${e.scale.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <hr style="border-color:#0f3460;margin:8px 0">
+      <div class="prop-row">
+        <label>X</label>
+        <input type="number" step="0.001" id="prop-x" value="${pos.x.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <div class="prop-row">
+        <label>Y</label>
+        <input type="number" step="0.001" id="prop-y" value="${pos.y.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <div class="prop-row">
+        <label>Z</label>
+        <input type="number" step="0.001" id="prop-z" value="${pos.z.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <div class="prop-row">
+        <label>Rotation</label>
+        <input type="number" step="1" id="prop-rot" value="${rotDeg.toFixed(1)}" onchange="onPropChange()">
+        <span class="val">deg</span>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-danger" onclick="deleteSelected()">Delete</button>
+        <button class="btn btn-save" onclick="copySelected()" title="Ctrl+C">Copy</button>
+      </div>
+    `;
+  } else {
+    // Original placed object
+    const isProcOrig = e.placement && e.placement.mode === 'procedural';
+    const dims = isProcOrig ? (e.placement.dimensions || {}) : null;
+    title.textContent = `${e.category}_${(e.index + 1).toString().padStart(3, '0')}`;
+    const procDimsHtml = isProcOrig && dims ? `
+      <div class="proc-dims-section">
+        <div class="section-label">Procedural Dimensions</div>
+        <div class="prop-row">
+          <label>Width (X)</label>
+          <input type="number" step="0.05" min="0.1" id="pdim-width" value="${(dims.width||1).toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Depth (Y)</label>
+          <input type="number" step="0.05" min="0.1" id="pdim-depth" value="${(dims.depth||0.6).toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Height</label>
+          <input type="number" step="0.01" min="0.1" id="pdim-height" value="${(dims.height||0.75).toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Top thickness</label>
+          <input type="number" step="0.005" min="0.005" id="pdim-top-thick" value="${(dims.tabletop_thickness||0.03).toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Leg width</label>
+          <input type="number" step="0.005" min="0.01" id="pdim-leg-w" value="${(dims.leg_width||0.05).toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="prop-row">
+          <label>Leg inset</label>
+          <input type="number" step="0.005" min="0" id="pdim-leg-inset" value="${(dims.leg_inset||0.02).toFixed(3)}" oninput="onProcDimChange()">
+          <span class="val" style="width:20px;">m</span>
+        </div>
+        <div class="btn-group" style="margin-bottom:0">
+          <button class="btn" style="background:#1a5c3a;color:#fff;" id="regen-btn" onclick="regenerateProceduralMesh()">Regenerate</button>
+        </div>
+      </div>
+    ` : '';
+    content.innerHTML = `
+      <div class="prop-row">
+        <label>Source</label>
+        <span style="font-size:11px;color:#aaa;overflow:hidden;text-overflow:ellipsis">${e.placement.source}</span>
+      </div>
+      <div class="prop-row">
+        <label>Class</label>
+        <span style="font-size:11px;color:#aaa">${e.placement.classification}</span>
+      </div>
+      <div class="prop-row">
+        <label>ICP fitness</label>
+        <span style="font-size:11px;color:#aaa">${(e.placement.icp_fitness || 0).toFixed(4)}</span>
+      </div>
+      <div class="prop-row">
+        <label>Points</label>
+        <span style="font-size:11px;color:#aaa">${(e.placement.point_count || 0).toLocaleString()}</span>
+      </div>
+      <hr style="border-color:#0f3460;margin:8px 0">
+      <div class="prop-row">
+        <label>X</label>
+        <input type="number" step="0.001" id="prop-x" value="${pos.x.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <div class="prop-row">
+        <label>Y</label>
+        <input type="number" step="0.001" id="prop-y" value="${pos.y.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <div class="prop-row">
+        <label>Z</label>
+        <input type="number" step="0.001" id="prop-z" value="${pos.z.toFixed(4)}" onchange="onPropChange()">
+      </div>
+      <div class="prop-row">
+        <label>Rotation</label>
+        <input type="number" step="1" id="prop-rot" value="${rotDeg.toFixed(1)}" onchange="onPropChange()">
+        <span class="val">deg</span>
+      </div>
+      ${procDimsHtml}
+      <div class="btn-group">
+        <button class="btn btn-danger" onclick="deleteSelected()">Delete</button>
+        <button class="btn btn-save" onclick="copySelected()" title="Ctrl+C">Copy</button>
+        <button class="btn btn-restore" onclick="resetSelected()">Reset</button>
+      </div>
+    `;
+  }
+}
+
+function updatePropsFromMesh() {
+  if (!selectedObj) return;
+  const pos = selectedObj.mesh.position;
+  const propX = document.getElementById('prop-x');
+  const propY = document.getElementById('prop-y');
+  const propZ = document.getElementById('prop-z');
+  const propRot = document.getElementById('prop-rot');
+  if (propX) propX.value = pos.x.toFixed(4);
+  if (propY) propY.value = pos.y.toFixed(4);
+  if (propZ) propZ.value = pos.z.toFixed(4);
+  if (propRot) {
+    const rotDeg = THREE.MathUtils.radToDeg(selectedObj.mesh.rotation.z);
+    propRot.value = rotDeg.toFixed(1);
+  }
+}
+
+// Global functions referenced from HTML onclick
+window.onPropChange = function() {
+  if (!selectedObj) return;
+
+  pushUndo('edit', selectedObj);
+
+  const x = parseFloat(document.getElementById('prop-x').value) || 0;
+  const y = parseFloat(document.getElementById('prop-y').value) || 0;
+  const z = parseFloat(document.getElementById('prop-z').value) || 0;
+  const rot = parseFloat(document.getElementById('prop-rot').value) || 0;
+
+  // Handle scale change for added objects
+  if (selectedObj.isAdded) {
+    const scaleInput = document.getElementById('prop-scale');
+    if (scaleInput) {
+      const newScale = parseFloat(scaleInput.value) || selectedObj.scale;
+      if (Math.abs(newScale - selectedObj.scale) > 1e-6 && newScale > 0) {
+        const ratio = newScale / selectedObj.scale;
+        selectedObj.mesh.geometry.scale(ratio, ratio, ratio);
+        selectedObj.mesh.geometry.computeBoundingBox();
+        selectedObj.scale = newScale;
+      }
+    }
+  }
+
+  selectedObj.mesh.position.set(x, y, z);
+  selectedObj.mesh.rotation.z = THREE.MathUtils.degToRad(rot);
+
+  // Update mannequins if this chair has a paired mannequin
+  if (mannequinMeshes.some(m => m.chairEntry === selectedObj)) {
+    applyMannAdjustments();
+  }
+};
+
+// ============================================================================
+// ACTIONS
+// ============================================================================
+window.deleteSelected = function() {
+  if (!selectedObj) return;
+
+  pushUndo('delete', selectedObj);
+  selectedObj.deleted = true;
+  selectedObj.mesh.material.opacity = DELETED_OPACITY;
+  selectedObj.mesh.material.color.setHex(0x666666);
+  transformControls.detach();
+
+  // Recompute occupancy (chair pool changed) and hide paired mannequin
+  if (mannequinMeshes.some(m => m.chairEntry === selectedObj)) {
+    recomputeOccupiedSet();
+    applyMannAdjustments();
+  }
+
+  // Update list item - find the right DOM element
+  const isProcedural = !!selectedObj.isProcedural;
+  const isAdded = !!selectedObj.isAdded && !isProcedural;
+  let targetList, typeKey;
+  if (isProcedural) { targetList = addedProceduralObjects; typeKey = 'added-procedural'; }
+  else if (isAdded) { targetList = addedObjects; typeKey = 'added'; }
+  else { targetList = objectMeshes; typeKey = 'original'; }
+  const idx = targetList.indexOf(selectedObj);
+  const items = document.querySelectorAll(`#object-list .obj-item[data-type="${typeKey}"]`);
+  if (items[idx]) items[idx].classList.add('deleted');
+
+  selectedObj = null;
+  updatePropsPanel();
+  updateStats();
+  updateRoomPreview();
+  const totalActive = objectMeshes.filter(o => !o.deleted).length
+    + addedObjects.filter(o => !o.deleted).length
+    + addedProceduralObjects.filter(o => !o.deleted).length;
+  document.getElementById('obj-count').textContent = `(${totalActive})`;
+};
+
+window.resetSelected = function() {
+  if (!selectedObj) return;
+
+  pushUndo('edit', selectedObj);
+
+  // Reset to original baked center position (no user offset, no rotation)
+  selectedObj.mesh.position.copy(selectedObj.bakedCenter);
+  selectedObj.mesh.rotation.set(0, 0, 0);
+  selectedObj.placement = { ...selectedObj.originalPlacement };
+
+  // Update paired mannequin
+  if (mannequinMeshes.some(m => m.chairEntry === selectedObj)) {
+    applyMannAdjustments();
+  }
+
+  updatePropsPanel();
+  toast('Reset to original position');
+};
+
+// ============================================================================
+// COPY / PASTE
+// ============================================================================
+
+/**
+ * Copy the currently selected object to the in-memory clipboard.
+ * Records enough information to reconstruct the object via pasteClipboard().
+ */
+function copySelected() {
+  if (!selectedObj) return;
+  const e = selectedObj;
+
+  if (e.isProcedural) {
+    clipboard = {
+      type: 'procedural',
+      dimensions: { ...e.dimensions },
+    };
+  } else if (e.isAdded) {
+    // Added template object
+    clipboard = {
+      type: 'template',
+      template_file: e.template_file,
+      scale: e.scale,
+    };
+  } else {
+    // Original placed object from step 4
+    if (e.placement && e.placement.mode === 'procedural') {
+      clipboard = {
+        type: 'procedural',
+        dimensions: { ...(e.placement.dimensions || {}) },
+      };
+    } else {
+      // Template-mode original: reference its individual STL path so the
+      // rebuild can load it via the existing /stl/ endpoint.
+      const stlRel = `${e.category}/individual/${e.category}_${String(e.index + 1).padStart(3, '0')}.stl`;
+      clipboard = {
+        type: 'original_template',
+        individual_stl_path: stlRel,
+        label: `${e.category}_${String(e.index + 1).padStart(3, '0')} (copy)`,
+        scale: 1.0,
+      };
+    }
+  }
+
+  // Store current world position and rotation for the paste
+  clipboard.position = e.mesh.position.clone();
+  clipboard.rotation_z = e.mesh.rotation.z;
+
+  // Store geometry clone for instant paste without a server round-trip
+  clipboard.geometry = e.mesh.geometry.clone();
+  clipboard.color = getEntryColor(e);
+
+  toast(`Copied — Ctrl+V or Ctrl+D to paste`);
+}
+window.copySelected = copySelected;
+
+/**
+ * Paste the clipboard as a new object, offset slightly from the source.
+ * Keeps the same Z level and rotation as the original.
+ */
+function pasteClipboard() {
+  if (!clipboard) { toast('Nothing copied yet (Ctrl+C first)'); return; }
+
+  // Compute paste offset: shift by the object's world-space X width + small gap
+  const bbox = new THREE.Box3().setFromBufferAttribute(
+    clipboard.geometry.attributes.position
+  );
+  const objWidth = bbox.max.x - bbox.min.x;
+  const offsetX = objWidth * 0.5 + 0.1;
+
+  const newPos = clipboard.position.clone();
+  newPos.x += offsetX;
+  // Z stays the same
+
+  const newRotZ = clipboard.rotation_z;
+
+  // Clone the geometry for the new mesh
+  const geometry = clipboard.geometry.clone();
+
+  const material = new THREE.MeshPhongMaterial({
+    color: clipboard.type === 'procedural' ? 0x69db7c : 0xff8c42,
+    transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.copy(newPos);
+  mesh.rotation.z = newRotZ;
+  scene.add(mesh);
+
+  let entry;
+
+  if (clipboard.type === 'procedural') {
+    entry = {
+      mesh,
+      dimensions: { ...clipboard.dimensions },
+      position: [newPos.x, newPos.y, newPos.z],
+      rotation_degrees: THREE.MathUtils.radToDeg(newRotZ),
+      deleted: false,
+      isAdded: true,
+      isProcedural: true,
+      bakedCenter: newPos.clone(),
+    };
+    addedProceduralObjects.push(entry);
+
+  } else {
+    // template or original_template → goes into addedObjects
+    const isOrigTemplate = clipboard.type === 'original_template';
+    entry = {
+      mesh,
+      template_file:       isOrigTemplate ? null : clipboard.template_file,
+      individual_stl_path: isOrigTemplate ? clipboard.individual_stl_path : null,
+      label:               isOrigTemplate ? clipboard.label : null,
+      scale:               clipboard.scale || 1.0,
+      position:            [newPos.x, newPos.y, newPos.z],
+      rotation_degrees:    THREE.MathUtils.radToDeg(newRotZ),
+      deleted:             false,
+      isAdded:             true,
+    };
+    addedObjects.push(entry);
+  }
+
+  // Update clipboard position so repeated Ctrl+V keeps stepping to the right
+  clipboard.position.x += offsetX;
+
+  buildObjectList();
+  selectObject(entry);
+  updateStats();
+  toast(`Pasted — use Ctrl+V again for another copy`);
+}
+window.pasteClipboard = pasteClipboard;
+
+function restoreObject(entry) {
+  entry.deleted = false;
+  entry.mesh.material.opacity = 0.85;
+  entry.mesh.material.color.setHex(getEntryColor(entry));
+
+  // Recompute occupancy (chair pool changed) and restore paired mannequin visibility
+  if (mannequinMeshes.some(m => m.chairEntry === entry)) {
+    recomputeOccupiedSet();
+    applyMannAdjustments();
+  }
+
+  const isProcedural = !!entry.isProcedural;
+  const isAdded = !!entry.isAdded && !isProcedural;
+  let targetList, typeKey;
+  if (isProcedural) { targetList = addedProceduralObjects; typeKey = 'added-procedural'; }
+  else if (isAdded) { targetList = addedObjects; typeKey = 'added'; }
+  else { targetList = objectMeshes; typeKey = 'original'; }
+  const idx = targetList.indexOf(entry);
+  const items = document.querySelectorAll(`#object-list .obj-item[data-type="${typeKey}"]`);
+  if (items[idx]) items[idx].classList.remove('deleted');
+
+  updateStats();
+  updateRoomPreview();
+  const totalActive = objectMeshes.filter(o => !o.deleted).length
+    + addedObjects.filter(o => !o.deleted).length
+    + addedProceduralObjects.filter(o => !o.deleted).length;
+  document.getElementById('obj-count').textContent = `(${totalActive})`;
+}
+
+// ============================================================================
+// UNDO
+// ============================================================================
+function pushUndo(type, entry) {
+  const isProcedural = !!entry.isProcedural;
+  const isAdded = !!entry.isAdded && !isProcedural;
+  let targetList;
+  if (isProcedural) targetList = addedProceduralObjects;
+  else if (isAdded) targetList = addedObjects;
+  else targetList = objectMeshes;
+  const state = {
+    type,
+    entryIdx: targetList.indexOf(entry),
+    isAdded,
+    isProcedural,
+    deleted: entry.deleted,
+    position: entry.mesh.position.clone(),
+    rotation: entry.mesh.rotation.clone(),
+    scale: isAdded ? entry.scale : undefined,
+    dimensions: isProcedural ? { ...entry.dimensions } : undefined,
+  };
+  undoStack.push(state);
+  if (undoStack.length > 100) undoStack.shift();
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  const state = undoStack.pop();
+  let targetList;
+  if (state.isProcedural) targetList = addedProceduralObjects;
+  else if (state.isAdded) targetList = addedObjects;
+  else targetList = objectMeshes;
+  const entry = targetList[state.entryIdx];
+
+  entry.mesh.position.copy(state.position);
+  entry.mesh.rotation.copy(state.rotation);
+
+  if (state.type === 'delete' && entry.deleted) {
+    restoreObject(entry);
+  }
+  if (state.deleted === false && entry.deleted) {
+    restoreObject(entry);
+  }
+
+  // Update mannequins in case the undone object is a chair
+  if (mannequinMeshes.some(m => m.chairEntry === entry)) {
+    applyMannAdjustments();
+  }
+
+  if (selectedObj === entry) {
+    updatePropsPanel();
+  }
+
+  toast('Undo');
+}
+
+// ============================================================================
+// TRANSFORM MODE
+// ============================================================================
+function setTransformMode(mode) {
+  transformControls.setMode(mode);
+  document.querySelectorAll('.mode-btn[data-mode]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+}
+
+// ============================================================================
+// KEYBOARD
+// ============================================================================
+function onKeyDown(e) {
+  // Don't intercept when typing in inputs
+  if (e.target.tagName === 'INPUT') return;
+
+  switch (e.key) {
+    case 'w': case 'W':
+      setTransformMode('translate');
+      break;
+    case 'e': case 'E':
+      setTransformMode('rotate');
+      break;
+    case 'Delete': case 'Backspace':
+      window.deleteSelected();
+      break;
+    case 'z': case 'Z':
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); undo(); }
+      break;
+    case 'c': case 'C':
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); copySelected(); }
+      break;
+    case 'v': case 'V':
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); pasteClipboard(); }
+      break;
+    case 'd': case 'D':
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); copySelected(); pasteClipboard(); }
+      break;
+    case 's': case 'S':
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); saveEdits(); }
+      break;
+    case 'Escape':
+      if (document.getElementById('help-overlay').classList.contains('show')) {
+        toggleHelp();
+      } else {
+        deselectObject();
+      }
+      break;
+    case '?':
+      toggleHelp();
+      break;
+    case 'f': case 'F':
+      fitCamera();
+      break;
+    case 'g': case 'G':
+      window.toggleGrid();
+      break;
+  }
+}
+
+window.toggleGrid = function() {
+  grid.visible = !grid.visible;
+  document.getElementById('grid-toggle').classList.toggle('active', grid.visible);
+};
+
+// ============================================================================
+// ROOM PREVIEW
+// ============================================================================
+
+window.toggleRoomPanel = function() {
+  document.getElementById('room-panel').classList.toggle('hidden-content');
+};
+
+window.toggleRoomPreview = function() {
+  if (roomPreviewBox) {
+    scene.remove(roomPreviewBox);
+    roomPreviewBox.geometry.dispose();
+    roomPreviewBox.material.dispose();
+    roomPreviewBox = null;
+    document.getElementById('room-preview-btn').textContent = 'Show';
+  } else {
+    updateRoomPreview();
+    document.getElementById('room-preview-btn').textContent = 'Hide';
+  }
+};
+
+window.refreshRoomPreview = function() {
+  // Force recompute even if preview is hidden — turn it on
+  if (!roomPreviewBox) {
+    document.getElementById('room-preview-btn').textContent = 'Hide';
+  }
+  updateRoomPreview();
+};
+
+function getSceneBounds() {
+  // Compute bounding box of all non-deleted object meshes
+  const box = new THREE.Box3();
+  for (const obj of objectMeshes) {
+    if (!obj.deleted) box.expandByObject(obj.mesh);
+  }
+  for (const obj of addedObjects) {
+    if (!obj.deleted) box.expandByObject(obj.mesh);
+  }
+  for (const obj of addedProceduralObjects) {
+    if (!obj.deleted) box.expandByObject(obj.mesh);
+  }
+  // Include visible mannequins
+  for (let i = 0; i < mannequinMeshes.length; i++) {
+    const m = mannequinMeshes[i];
+    if (m.mesh.visible) box.expandByObject(m.mesh);
+  }
+  return box;
+}
+
+function updateRoomPreview() {
+  if (!roomPreviewBox && document.getElementById('room-preview-btn').textContent === 'Show') return;
+
+  // Remove old preview
+  if (roomPreviewBox) {
+    scene.remove(roomPreviewBox);
+    roomPreviewBox.geometry.dispose();
+    roomPreviewBox.material.dispose();
+    roomPreviewBox = null;
+  }
+
+  const sceneBounds = getSceneBounds();
+  if (sceneBounds.isEmpty()) return;
+
+  const pad = roomConfig.padding;
+  const height = roomConfig.height;
+  const rotDeg = roomConfig.rotation_deg;
+  const rotRad = rotDeg * Math.PI / 180;
+
+  // Pivot = centre of all scene vertices
+  const pivot = new THREE.Vector3();
+  sceneBounds.getCenter(pivot);
+
+  let roomMin, roomMax;
+
+  if (Math.abs(rotDeg) > 0.01) {
+    // Rotate all mesh vertices into the aligned frame, compute bbox there
+    const cosR = Math.cos(-rotRad), sinR = Math.sin(-rotRad);
+    const aabb = new THREE.Box3();
+    const allMeshes = [
+      ...objectMeshes.filter(o => !o.deleted).map(o => o.mesh),
+      ...addedObjects.filter(o => !o.deleted).map(o => o.mesh),
+      ...addedProceduralObjects.filter(o => !o.deleted).map(o => o.mesh),
+      ...mannequinMeshes.filter((m, i) => m.mesh.visible).map(m => m.mesh),
+    ];
+    for (const mesh of allMeshes) {
+      const pos = mesh.geometry.attributes.position;
+      const wm = mesh.matrixWorld;
+      const v = new THREE.Vector3();
+      for (let vi = 0; vi < pos.count; vi++) {
+        v.fromBufferAttribute(pos, vi).applyMatrix4(wm);
+        // Rotate around pivot
+        const dx = v.x - pivot.x, dy = v.y - pivot.y;
+        v.x = pivot.x + dx * cosR - dy * sinR;
+        v.y = pivot.y + dx * sinR + dy * cosR;
+        aabb.expandByPoint(v);
+      }
+    }
+    roomMin = aabb.min.clone();
+    roomMax = aabb.max.clone();
+  } else {
+    roomMin = sceneBounds.min.clone();
+    roomMax = sceneBounds.max.clone();
+  }
+
+  // Apply padding and height
+  roomMin.x -= pad; roomMin.y -= pad;
+  roomMax.x += pad; roomMax.y += pad;
+  // Floor stays at scene bottom
+  const floorZ = roomMin.z;
+  roomMax.z = floorZ + height;
+
+  // Build wireframe box in aligned frame, then rotate back
+  const sx = roomMax.x - roomMin.x;
+  const sy = roomMax.y - roomMin.y;
+  const sz = roomMax.z - roomMin.z;
+  const cx = (roomMin.x + roomMax.x) / 2;
+  const cy = (roomMin.y + roomMax.y) / 2;
+  const cz = (roomMin.z + roomMax.z) / 2;
+
+  // Build wireframe box centred at (cx, cy, cz) in the aligned frame
+  const boxGeom = new THREE.BoxGeometry(sx, sy, sz);
+  const posAttr = boxGeom.attributes.position;
+  // Translate from origin to aligned-frame centre
+  for (let i = 0; i < posAttr.count; i++) {
+    posAttr.setXYZ(i,
+      posAttr.getX(i) + cx,
+      posAttr.getY(i) + cy,
+      posAttr.getZ(i) + cz);
+  }
+
+  // Rotate back to world frame if needed
+  if (Math.abs(rotDeg) > 0.01) {
+    const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+    for (let i = 0; i < posAttr.count; i++) {
+      const dx = posAttr.getX(i) - pivot.x;
+      const dy = posAttr.getY(i) - pivot.y;
+      posAttr.setX(i, pivot.x + dx * cosR - dy * sinR);
+      posAttr.setY(i, pivot.y + dx * sinR + dy * cosR);
+    }
+  }
+  posAttr.needsUpdate = true;
+
+  if (roomConfig.floor_type === 'auditorium') {
+    // Build auditorium wireframe: outer box + floor profile lines
+    const stageD  = roomConfig.stage_depth    || 0.2;
+    const stageH  = roomConfig.stage_height   || 0.05;
+    const flatD   = roomConfig.flat_depth     || 0.3;
+    const yF = roomMin.y, yB = roomMax.y;
+    const yS = Math.min(yF + stageD, yB);
+    const yP = Math.min(yS + flatD,  yB);
+    const zF = roomMin.z;
+    const zC = roomMax.z;
+    const zST = zF + stageH;
+    // Use manual tilt if set, otherwise use server-computed auto tilt
+    const tiltDeg = (roomConfig.floor_tilt_deg != null) ? roomConfig.floor_tilt_deg
+                  : (autoFloorTiltDeg != null)          ? autoFloorTiltDeg
+                  : 0;
+    const zB = zF + Math.tan(tiltDeg * Math.PI / 180) * (yB - yP);
+
+    // Build line segments in aligned frame, then rotate back
+    const linePoints = [];
+    const addQuad = (p0, p1, p2, p3) => {
+      linePoints.push(p0,p1, p1,p2, p2,p3, p3,p0);
+    };
+    // Floor profile (left side at xL, then mirrored)
+    for (const x of [roomMin.x, roomMax.x]) {
+      // Stage top
+      linePoints.push(new THREE.Vector3(x,yF,zST), new THREE.Vector3(x,yS,zST));
+      // Stage back drop
+      linePoints.push(new THREE.Vector3(x,yS,zST), new THREE.Vector3(x,yS,zF));
+      // Flat floor
+      linePoints.push(new THREE.Vector3(x,yS,zF),  new THREE.Vector3(x,yP,zF));
+      // Inclined floor
+      linePoints.push(new THREE.Vector3(x,yP,zF),  new THREE.Vector3(x,yB,zB));
+      // Back wall
+      linePoints.push(new THREE.Vector3(x,yB,zB),  new THREE.Vector3(x,yB,zC));
+      // Ceiling to front
+      linePoints.push(new THREE.Vector3(x,yB,zC),  new THREE.Vector3(x,yF,zC));
+      // Front wall
+      linePoints.push(new THREE.Vector3(x,yF,zC),  new THREE.Vector3(x,yF,zST));
+    }
+    // Cross-beams (front, stage-back, flat-back, back) at ceiling and floor
+    for (const [y, zLow, zHigh] of [[yF,zST,zC],[yS,zF,zST],[yP,zF,zF],[yB,zB,zC]]) {
+      linePoints.push(
+        new THREE.Vector3(roomMin.x,y,zHigh), new THREE.Vector3(roomMax.x,y,zHigh),
+        new THREE.Vector3(roomMin.x,y,zLow),  new THREE.Vector3(roomMax.x,y,zLow)
+      );
+    }
+
+    // Rotate points back to world frame if needed
+    if (Math.abs(rotDeg) > 0.01) {
+      const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+      for (const p of linePoints) {
+        const dx = p.x - pivot.x, dy = p.y - pivot.y;
+        p.x = pivot.x + dx * cosR - dy * sinR;
+        p.y = pivot.y + dx * sinR + dy * cosR;
+      }
+    }
+
+    boxGeom.dispose();  // unused in auditorium branch
+    const geom = new THREE.BufferGeometry().setFromPoints(linePoints);
+    roomPreviewBox = new THREE.LineSegments(geom,
+      new THREE.LineBasicMaterial({ color: 0x2d6a4f, linewidth: 2 })
+    );
+    scene.add(roomPreviewBox);
+    document.getElementById('room-dims').textContent =
+      `${sx.toFixed(2)} x ${sy.toFixed(2)} x ${sz.toFixed(2)} m  [auditorium]`;
+  } else {
+    const edges = new THREE.EdgesGeometry(boxGeom);
+    roomPreviewBox = new THREE.LineSegments(edges,
+      new THREE.LineBasicMaterial({ color: 0x2d6a4f, linewidth: 2 })
+    );
+    scene.add(roomPreviewBox);
+    document.getElementById('room-dims').textContent =
+      `${sx.toFixed(2)} x ${sy.toFixed(2)} x ${sz.toFixed(2)} m`;
+  }
+}
+
+window.onRoomRotationChange = function() {
+  const val = parseFloat(document.getElementById('room-rotation').value);
+  roomConfig.rotation_deg = val;
+  document.getElementById('room-rotation-val').textContent = val + '°';
+  document.getElementById('room-rotation-num').value = val;
+  updateRoomPreview();
+};
+
+window.onRoomRotationNumChange = function() {
+  let val = parseFloat(document.getElementById('room-rotation-num').value) || 0;
+  val = Math.max(-180, Math.min(180, val));
+  roomConfig.rotation_deg = val;
+  document.getElementById('room-rotation').value = val;
+  document.getElementById('room-rotation-val').textContent = val + '°';
+  updateRoomPreview();
+};
+
+function _applyRoomConfigToUI() {
+  document.getElementById('room-floor-type').value = roomConfig.floor_type || 'flat';
+  document.getElementById('room-stage-depth').value  = roomConfig.stage_depth  ?? 0.2;
+  document.getElementById('room-stage-height').value = roomConfig.stage_height ?? 0.05;
+  document.getElementById('room-flat-depth').value   = roomConfig.flat_depth   ?? 0.3;
+  const tilt = roomConfig.floor_tilt_deg;
+  const tiltInput = document.getElementById('room-tilt');
+  tiltInput.value = (tilt != null) ? tilt : '';
+  tiltInput.placeholder = (autoFloorTiltDeg != null)
+    ? `auto (${autoFloorTiltDeg.toFixed(1)}°)` : 'auto';
+  document.getElementById('audi-fields').classList.toggle('visible', roomConfig.floor_type === 'auditorium');
+}
+
+window.onRoomFloorTypeChange = function() {
+  roomConfig.floor_type = document.getElementById('room-floor-type').value;
+  document.getElementById('audi-fields').classList.toggle('visible', roomConfig.floor_type === 'auditorium');
+  updateRoomPreview();
+};
+
+window.recalcFloorTilt = async function() {
+  const btn = document.getElementById('tilt-recalc-btn');
+  btn.textContent = '…';
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/api/compute_floor_tilt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rotation_deg: roomConfig.rotation_deg,
+        stage_depth:  roomConfig.stage_depth,
+        flat_depth:   roomConfig.flat_depth,
+        padding:      roomConfig.padding,
+      }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      autoFloorTiltDeg = data.tilt_deg;
+      // Update placeholder to show computed value; clear manual override
+      roomConfig.floor_tilt_deg = null;
+      document.getElementById('room-tilt').value = '';
+      document.getElementById('room-tilt').placeholder = `auto (${data.tilt_deg.toFixed(1)}°)`;
+      toast(`Floor tilt: ${data.tilt_deg.toFixed(1)}° from ${data.n_chairs} chairs`);
+      updateRoomPreview();
+    } else {
+      toast(`Tilt calc failed: ${data.error}`, true);
+    }
+  } catch (e) {
+    toast(`Tilt calc error: ${e}`, true);
+  } finally {
+    btn.textContent = '↻';
+    btn.disabled = false;
+  }
+};
+
+window.onRoomConfigChange = function() {
+  roomConfig.padding      = parseFloat(document.getElementById('room-padding').value)      || 0.1;
+  roomConfig.height       = parseFloat(document.getElementById('room-height').value)       || 1.0;
+  roomConfig.stage_depth  = parseFloat(document.getElementById('room-stage-depth').value)  || 0.2;
+  roomConfig.stage_height = parseFloat(document.getElementById('room-stage-height').value) || 0.0;
+  roomConfig.flat_depth   = parseFloat(document.getElementById('room-flat-depth').value)   || 0.0;
+  const tiltVal = document.getElementById('room-tilt').value.trim();
+  roomConfig.floor_tilt_deg = tiltVal === '' ? null : parseFloat(tiltVal);
+  updateRoomPreview();
+};
+
+
+// ============================================================================
+// MANNEQUIN ADJUSTMENTS
+// ============================================================================
+window.onMannChange = function() {
+  mannAdjustments.scale_factor = parseFloat(document.getElementById('mann-scale').value) || 1.0;
+  mannAdjustments.rotation_z = parseFloat(document.getElementById('mann-rot-z').value) || 0;
+  mannAdjustments.offset_x = parseFloat(document.getElementById('mann-off-x').value) || 0;
+  mannAdjustments.offset_y = parseFloat(document.getElementById('mann-off-y').value) || 0;
+  mannAdjustments.offset_z = parseFloat(document.getElementById('mann-off-z').value) || 0;
+  recomputeOccupiedSet();
+  applyMannAdjustments();
+};
+
+window.onOccupancyChange = function() {
+  const pct = parseInt(document.getElementById('mann-occupancy').value);
+  mannAdjustments.occupancy_pct = pct;
+  document.getElementById('mann-occupancy-val').textContent = pct + '%';
+  recomputeOccupiedSet();
+  applyMannAdjustments();
+  updateStats();
+};
+
+window.onOccupancySeedChange = function() {
+  mannOccupancySeed = parseInt(document.getElementById('mann-seed').value) || 0;
+  recomputeOccupiedSet();
+  applyMannAdjustments();
+};
+
+window.randomizeSeed = function() {
+  mannOccupancySeed = Math.floor(Math.random() * 10000);
+  document.getElementById('mann-seed').value = mannOccupancySeed;
+  recomputeOccupiedSet();
+  applyMannAdjustments();
+  toast('Shuffled mannequin selection');
+};
+
+/**
+ * Recompute which mannequins are "occupied" based on occupancy_pct.
+ * Only considers mannequins whose paired chair is NOT deleted.
+ * Uses a seeded PRNG for stable, reproducible selection.
+ */
+function recomputeOccupiedSet() {
+  mannOccupiedSet.clear();
+  const pct = mannAdjustments.occupancy_pct;
+  if (pct >= 100) {
+    // All mannequins occupied
+    for (let i = 0; i < mannequinMeshes.length; i++) mannOccupiedSet.add(i);
+    return;
+  }
+  if (pct <= 0) return;
+
+  // Collect indices of mannequins with non-deleted chairs
+  const eligible = [];
+  for (let i = 0; i < mannequinMeshes.length; i++) {
+    const chair = mannequinMeshes[i].chairEntry;
+    if (!chair || !chair.deleted) {
+      eligible.push(i);
+    }
+  }
+
+  const nToFill = Math.round(eligible.length * pct / 100);
+  if (nToFill <= 0) return;
+  if (nToFill >= eligible.length) {
+    for (const idx of eligible) mannOccupiedSet.add(idx);
+    return;
+  }
+
+  // LCG PRNG with Fisher-Yates shuffle.  MUST match the Python
+  // implementation in 4_create_stl.py:_compute_occupied_indices() exactly
+  // so that editor preview and rebuild produce the same occupied set.
+  // Constants: multiplier=1664525, increment=1013904223, modulus=2^32.
+  let seed = mannOccupancySeed;
+  function nextRand() {
+    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+    return (seed >>> 0) / 0x100000000;
+  }
+  const shuffled = eligible.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(nextRand() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  for (let i = 0; i < nToFill; i++) {
+    mannOccupiedSet.add(shuffled[i]);
+  }
+}
+
+window.resetMannAdjustments = function() {
+  mannAdjustments = { scale_factor: 1.0, rotation_z: 0, offset_x: 0, offset_y: 0, offset_z: 0, occupancy_pct: 100 };
+  document.getElementById('mann-scale').value = '1.0';
+  document.getElementById('mann-rot-z').value = '0';
+  document.getElementById('mann-off-x').value = '0';
+  document.getElementById('mann-off-y').value = '0';
+  document.getElementById('mann-off-z').value = '0';
+  document.getElementById('mann-occupancy').value = '100';
+  document.getElementById('mann-occupancy-val').textContent = '100%';
+  mannOccupancySeed = Math.floor(Math.random() * 10000);
+  document.getElementById('mann-seed').value = mannOccupancySeed;
+  recomputeOccupiedSet();
+  applyMannAdjustments();
+  toast('Mannequin adjustments reset');
+};
+
+window.toggleMannPanel = function() {
+  document.getElementById('mann-panel').classList.toggle('hidden-content');
+};
+
+// Apply editor mannequin adjustments to all mannequin meshes.
+//
+// This operates on vertex positions directly (not mesh.position) because
+// mannequin meshes have world-space coordinates baked into their vertices.
+//
+// Transform pipeline per vertex:
+//   1. Subtract AABB center (move to local space around mannequin centre)
+//   2. Scale by scale_factor  (1.0 = no change from Step 4 output)
+//   3. Rotate by rotation_z   (0   = no change)
+//   4. Add back centre + offset rotated into chair's local frame
+//   5. Follow paired chair movement (translate + rotate with the chair)
+//
+// With neutral defaults (scale=1, offsets=0, rot=0) and no chair movement,
+// the entire transform is identity — the mannequin stays at the clean
+// Step 4 position loaded from mannequins/.
+//
+// The offset is rotated into each chair's local frame using chairRotDeg
+// (the chair's Step 4 rotation from scene_log.json).  This ensures the
+// offset stays in the chair's "forward/right" frame regardless of how
+// the chair is oriented in the scene.  This matches the Python rebuild
+// which does: rotated_offset = rotation_matrix_z(chair_angle) @ offset.
+function applyMannAdjustments() {
+  const { scale_factor, rotation_z, offset_x, offset_y, offset_z } = mannAdjustments;
+  const rotRad = THREE.MathUtils.degToRad(rotation_z);
+
+  for (let mi = 0; mi < mannequinMeshes.length; mi++) {
+    const entry = mannequinMeshes[mi];
+    const geo = entry.mesh.geometry;
+    const origArr = entry.originalVertices;
+    const posArr = geo.attributes.position.array;
+    const cx = entry.center.x, cy = entry.center.y, cz = entry.center.z;
+    const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+
+    const chair = entry.chairEntry;
+    if (chair && chair.deleted) {
+      entry.mesh.visible = false;
+      continue;
+    }
+    if (!mannOccupiedSet.has(mi)) {
+      entry.mesh.visible = false;
+      continue;
+    }
+    entry.mesh.visible = true;
+
+    // How much has the user moved/rotated this chair in the editor?
+    let chairDeltaX = 0, chairDeltaY = 0, chairDeltaZ = 0, chairDeltaRot = 0;
+    let chairCx = 0, chairCy = 0;
+    if (chair) {
+      chairDeltaX = chair.mesh.position.x - chair.bakedCenter.x;
+      chairDeltaY = chair.mesh.position.y - chair.bakedCenter.y;
+      chairDeltaZ = chair.mesh.position.z - chair.bakedCenter.z;
+      chairDeltaRot = chair.mesh.rotation.z;
+      chairCx = chair.bakedCenter.x;
+      chairCy = chair.bakedCenter.y;
+    }
+    const cosDelta = Math.cos(chairDeltaRot), sinDelta = Math.sin(chairDeltaRot);
+
+    // Rotate offset into the chair's local frame using its Step 4 rotation.
+    // This matches: rotation_matrix_z(chairRad) @ [offset_x, offset_y, 0]
+    const chairRad = THREE.MathUtils.degToRad(entry.chairRotDeg || 0);
+    const cosC = Math.cos(chairRad), sinC = Math.sin(chairRad);
+    const localOffX = offset_x * cosC - offset_y * sinC;
+    const localOffY = offset_x * sinC + offset_y * cosC;
+
+    for (let i = 0; i < posArr.length; i += 3) {
+      // 1. Move to local space (subtract AABB centre)
+      let x = origArr[i] - cx;
+      let y = origArr[i+1] - cy;
+      let z = origArr[i+2] - cz;
+
+      // 2. Scale
+      x *= scale_factor;
+      y *= scale_factor;
+      z *= scale_factor;
+
+      // 3. Extra Z rotation
+      const rx = x * cosR - y * sinR;
+      const ry = x * sinR + y * cosR;
+
+      // 4. Restore centre + local-frame offset
+      let vx = rx + cx + localOffX;
+      let vy = ry + cy + localOffY;
+      let vz = z  + cz + offset_z;
+
+      // 5. Follow paired chair (rotate around chair centre, then translate)
+      if (chair) {
+        const relX = vx - chairCx;
+        const relY = vy - chairCy;
+        vx = relX * cosDelta - relY * sinDelta + chairCx + chairDeltaX;
+        vy = relX * sinDelta + relY * cosDelta + chairCy + chairDeltaY;
+        vz = vz + chairDeltaZ;
+      }
+
+      posArr[i]   = vx;
+      posArr[i+1] = vy;
+      posArr[i+2] = vz;
+    }
+
+    geo.attributes.position.needsUpdate = true;
+    geo.computeBoundingBox();
+    geo.computeBoundingSphere();
+  }
+}
+
+// ============================================================================
+// SAVE
+// ============================================================================
+window.saveEdits = async function() {
+  const edits = buildEditsPayload();
+
+  try {
+    const resp = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(edits),
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      toast(`Saved! ${result.message || ''}`);
+    } else {
+      toast(`Error: ${result.error}`, true);
+    }
+  } catch (e) {
+    toast(`Save failed: ${e.message}`, true);
+  }
+};
+
+window.saveAndRebuild = async function() {
+  const edits = buildEditsPayload();
+
+  try {
+    toast('Saving and rebuilding...');
+    const resp = await fetch('/api/save_and_rebuild', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(edits),
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      toast(`Rebuilt! ${result.message || ''}`);
+    } else {
+      toast(`Error: ${result.error}`, true);
+    }
+  } catch (e) {
+    toast(`Rebuild failed: ${e.message}`, true);
+  }
+};
+
+function buildEditsPayload() {
+  const edits = {};
+
+  // Include mannequin adjustments in the payload
+  if (mannequinMeshes.length > 0) {
+    edits._mannequin_adjustments = {
+      ...mannAdjustments,
+      occupancy_seed: mannOccupancySeed,
+    };
+  }
+
+  // Include room config
+  edits._room_config = { ...roomConfig };
+
+  // Include manually added template objects (and copied placed objects)
+  if (addedObjects.length > 0) {
+    edits._added_objects = addedObjects.map(entry => {
+      const obj = {
+        position: [entry.mesh.position.x, entry.mesh.position.y, entry.mesh.position.z],
+        rotation_degrees: THREE.MathUtils.radToDeg(entry.mesh.rotation.z),
+        scale: entry.scale || 1.0,
+        deleted: entry.deleted,
+      };
+      // Copies of original objects reference their individual STL; template-library
+      // objects reference their template file.
+      if (entry.individual_stl_path) obj.individual_stl_path = entry.individual_stl_path;
+      else obj.template_file = entry.template_file;
+      return obj;
+    });
+  }
+
+  // Include manually added procedural tables
+  if (addedProceduralObjects.length > 0) {
+    edits._added_procedural_objects = addedProceduralObjects.map(entry => ({
+      dimensions: { ...entry.dimensions },
+      position: [entry.mesh.position.x, entry.mesh.position.y, entry.mesh.position.z],
+      rotation_degrees: THREE.MathUtils.radToDeg(entry.mesh.rotation.z),
+      deleted: entry.deleted,
+    }));
+  }
+
+  for (const entry of objectMeshes) {
+    if (!edits[entry.category]) {
+      edits[entry.category] = {
+        scene_log: sceneData[entry.category],
+        placements: [],
+      };
+    }
+
+    // Compute the user's offset from the original baked position.
+    // mesh.position started at bakedCenter; the delta is the user's adjustment.
+    const delta = entry.mesh.position.clone().sub(entry.bakedCenter);
+    const rotOffset = THREE.MathUtils.radToDeg(entry.mesh.rotation.z);
+
+    const editedPlacement = {
+      ...entry.placement,
+      position: [
+        entry.placement.position[0] + delta.x,
+        entry.placement.position[1] + delta.y,
+        entry.placement.position[2] + delta.z,
+      ],
+      rotation_degrees: entry.placement.rotation_degrees + rotOffset,
+      _deleted: entry.deleted,
+      _original_position: entry.originalPlacement.position,
+      _original_rotation: entry.originalPlacement.rotation_degrees,
+    };
+
+    edits[entry.category].placements.push(editedPlacement);
+  }
+
+  return edits;
+}
+
+// ============================================================================
+// UI HELPERS
+// ============================================================================
+function updateStats() {
+  const total = objectMeshes.length + addedObjects.length + addedProceduralObjects.length;
+  const active = objectMeshes.filter(o => !o.deleted).length
+    + addedObjects.filter(o => !o.deleted).length
+    + addedProceduralObjects.filter(o => !o.deleted).length;
+  const deleted = total - active;
+  const categories = [...new Set(objectMeshes.map(o => o.category))];
+  const addedCount = addedObjects.filter(o => !o.deleted).length;
+  const addedProcCount = addedProceduralObjects.filter(o => !o.deleted).length;
+  const mannCount = mannequinMeshes.length;
+  const mannVisible = mannequinMeshes.filter((_, i) => mannOccupiedSet.has(i)).length;
+  const mannStr = mannCount > 0 ? ` | ${mannVisible}/${mannCount} mannequins (${mannAdjustments.occupancy_pct}%)` : '';
+  const addedStr = addedCount > 0 ? ` | ${addedCount} added` : '';
+  const addedProcStr = addedProcCount > 0 ? ` | ${addedProcCount} proc. tables` : '';
+  document.getElementById('stats-text').textContent =
+    `${active} objects (${deleted} deleted)${addedStr}${addedProcStr}${mannStr} | Categories: ${categories.join(', ')}`;
+}
+
+function toast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = isError ? '#c0392b' : '#2d6a4f';
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+window.toast = toast;
+
+window.toggleHelp = function() {
+  document.getElementById('help-overlay').classList.toggle('show');
+};
+
+function onResize() {
+  const container = document.getElementById('canvas-container');
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(container.clientWidth, container.clientHeight);
+}
+
+// ============================================================================
+// PROCEDURAL TABLE EDITOR
+// ============================================================================
+
+/**
+ * Read dimension inputs from the properties panel (for both original procedural
+ * objects and added procedural objects).
+ */
+function _readProcDimsFromPanel() {
+  return {
+    width:              parseFloat(document.getElementById('pdim-width')?.value)     || 1.0,
+    depth:              parseFloat(document.getElementById('pdim-depth')?.value)     || 0.6,
+    height:             parseFloat(document.getElementById('pdim-height')?.value)    || 0.75,
+    tabletop_thickness: parseFloat(document.getElementById('pdim-top-thick')?.value) || 0.03,
+    leg_width:          parseFloat(document.getElementById('pdim-leg-w')?.value)     || 0.05,
+    leg_inset:          parseFloat(document.getElementById('pdim-leg-inset')?.value) || 0.02,
+  };
+}
+
+// Debounce timer for dimension changes → auto-regenerate
+let _procDimDebounce = null;
+
+/**
+ * Called when a dimension input changes.  Waits 500 ms after the last
+ * keystroke before calling regenerateProceduralMesh() so the server
+ * isn't hit on every character.
+ */
+window.onProcDimChange = function() {
+  clearTimeout(_procDimDebounce);
+  _procDimDebounce = setTimeout(() => window.regenerateProceduralMesh(), 500);
+};
+
+/**
+ * Fetch a fresh STL from the server for the given dimension params, then
+ * replace the current selection's Three.js geometry in-place.
+ * Works for both original procedural objects (objectMeshes) and
+ * added procedural objects (addedProceduralObjects).
+ */
+window.regenerateProceduralMesh = async function() {
+  if (!selectedObj) return;
+
+  const dims = _readProcDimsFromPanel();
+
+  // Guard: don't regenerate if the panel dims match what's already stored.
+  // Step 4 scene_log.json may only store width/depth/height (older runs), so
+  // apply the same fallback defaults used by the panel inputs before comparing.
+  const PROC_DEFAULTS = { width: 1.0, depth: 0.6, height: 0.75, tabletop_thickness: 0.03, leg_width: 0.05, leg_inset: 0.02 };
+  const storedDims = selectedObj.isProcedural
+    ? (selectedObj.dimensions || {})
+    : (selectedObj.placement && selectedObj.placement.dimensions) || {};
+  const dimKeys = ['width', 'depth', 'height', 'tabletop_thickness', 'leg_width', 'leg_inset'];
+  const anyChanged = dimKeys.some(k => {
+    const panelVal  = dims[k]       !== undefined ? dims[k]       : PROC_DEFAULTS[k];
+    const storedVal = storedDims[k] !== undefined ? storedDims[k] : PROC_DEFAULTS[k];
+    return Math.abs(panelVal - storedVal) > 1e-6;
+  });
+  if (!anyChanged) return;
+
+  const btn = document.getElementById('regen-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+
+  try {
+    const resp = await fetch('/api/generate_procedural_table', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensions: dims }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      toast(`Regen failed: ${err.error}`, true);
+      return;
+    }
+
+    const buf = await resp.arrayBuffer();
+
+    // Parse the returned STL and replace geometry
+    const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
+    const loader = new STLLoader();
+    const newGeometry = loader.parse(buf);
+    newGeometry.computeVertexNormals();
+    newGeometry.computeBoundingBox();
+    const center = new THREE.Vector3();
+    newGeometry.boundingBox.getCenter(center);
+    newGeometry.translate(-center.x, -center.y, -center.z);
+
+    // Remember world position so we can reapply it
+    const worldPos = selectedObj.mesh.position.clone();
+    const worldRot = selectedObj.mesh.rotation.z;
+
+    // Dispose old geometry and replace
+    selectedObj.mesh.geometry.dispose();
+    selectedObj.mesh.geometry = newGeometry;
+    selectedObj.mesh.position.copy(worldPos);
+    selectedObj.mesh.rotation.z = worldRot;
+    // Do NOT update bakedCenter — it tracks the original neutral position so that
+    // buildEditsPayload can compute the user's delta correctly after regeneration.
+
+    // Update stored dimensions
+    if (selectedObj.isProcedural) {
+      // Added procedural object
+      selectedObj.dimensions = { ...dims };
+      // Refresh sidebar label
+      buildObjectList();
+      selectObject(selectedObj);
+    } else if (selectedObj.placement) {
+      // Original placed procedural object
+      selectedObj.placement.dimensions = { ...dims };
+    }
+
+    toast(`Regenerated: ${dims.width.toFixed(2)}×${dims.depth.toFixed(2)}×${dims.height.toFixed(2)} m`);
+    updateRoomPreview();
+  } catch (e) {
+    toast(`Regen error: ${e.message}`, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Regenerate'; }
+  }
+};
+
+// ---- Procedural table modal ----
+
+window.openProceduralModal = function() {
+  document.getElementById('procedural-modal').classList.add('show');
+};
+
+window.closeProceduralModal = function() {
+  document.getElementById('procedural-modal').classList.remove('show');
+};
+
+document.getElementById('procedural-modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('procedural-modal')) closeProceduralModal();
+});
+
+window.onAddProceduralTable = async function() {
+  const dims = {
+    width:              parseFloat(document.getElementById('proc-width').value)     || 1.2,
+    depth:              parseFloat(document.getElementById('proc-depth').value)     || 0.6,
+    height:             parseFloat(document.getElementById('proc-height').value)    || 0.75,
+    tabletop_thickness: parseFloat(document.getElementById('proc-top-thick').value) || 0.03,
+    leg_width:          parseFloat(document.getElementById('proc-leg-w').value)     || 0.05,
+    leg_inset:          parseFloat(document.getElementById('proc-leg-inset').value) || 0.02,
+  };
+  closeProceduralModal();
+  await addProceduralTable(dims);
+};
+
+async function addProceduralTable(dims) {
+  try {
+    const resp = await fetch('/api/generate_procedural_table', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensions: dims }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      toast(`Failed to create table: ${err.error}`, true);
+      return;
+    }
+
+    const buf = await resp.arrayBuffer();
+
+    const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
+    const loader = new STLLoader();
+    const geometry = loader.parse(buf);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+
+    const center = new THREE.Vector3();
+    geometry.boundingBox.getCenter(center);
+    geometry.translate(-center.x, -center.y, -center.z);
+
+    const material = new THREE.MeshPhongMaterial({
+      color: 0x69db7c,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // Place at scene center (XY), keeping Z offset from center
+    const sceneBox = new THREE.Box3();
+    for (const e of objectMeshes) { if (!e.deleted) sceneBox.expandByObject(e.mesh); }
+    for (const e of addedObjects)  { if (!e.deleted) sceneBox.expandByObject(e.mesh); }
+    for (const e of addedProceduralObjects) { if (!e.deleted) sceneBox.expandByObject(e.mesh); }
+
+    if (!sceneBox.isEmpty()) {
+      const sc = new THREE.Vector3();
+      sceneBox.getCenter(sc);
+      mesh.position.set(sc.x, sc.y, center.z);
+    }
+
+    scene.add(mesh);
+
+    const entry = {
+      mesh,
+      dimensions: { ...dims },
+      position: [mesh.position.x, mesh.position.y, mesh.position.z],
+      rotation_degrees: 0,
+      deleted: false,
+      isAdded: true,
+      isProcedural: true,
+      // After centering the geometry, world-space center == mesh.position
+      bakedCenter: mesh.position.clone(),
+    };
+    addedProceduralObjects.push(entry);
+
+    buildObjectList();
+    selectObject(entry);
+    updateStats();
+
+    toast(`Added procedural table ${dims.width.toFixed(2)}×${dims.depth.toFixed(2)}×${dims.height.toFixed(2)} m`);
+  } catch (e) {
+    toast(`Error creating table: ${e.message}`, true);
+  }
+}
+
+// ============================================================================
+// TEMPLATE BROWSER (Add from library)
+// ============================================================================
+window.openTemplateModal = async function() {
+  const modal = document.getElementById('template-modal');
+  const list = document.getElementById('template-list');
+  modal.classList.add('show');
+  list.innerHTML = 'Loading templates...';
+
+  try {
+    const resp = await fetch('/api/templates');
+    const data = await resp.json();
+    const templates = data.templates || [];
+
+    if (templates.length === 0) {
+      list.innerHTML = '<p style="font-size:12px;color:#888;padding:8px;">No STL templates found in the shared template directory.</p>';
+      return;
+    }
+
+    list.innerHTML = '';
+    for (const tpl of templates) {
+      const div = document.createElement('div');
+      div.className = 'tpl-item';
+      div.innerHTML = `
+        <span class="tpl-name">${tpl}</span>
+        <button class="btn btn-success" style="padding:3px 8px;font-size:11px;">Add</button>
+      `;
+      div.querySelector('button').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await addObjectFromTemplate(tpl);
+        closeTemplateModal();
+      });
+      list.appendChild(div);
+    }
+  } catch (e) {
+    list.innerHTML = `<p style="color:#e94560;font-size:12px;padding:8px;">Error: ${e.message}</p>`;
+  }
+};
+
+window.closeTemplateModal = function() {
+  document.getElementById('template-modal').classList.remove('show');
+};
+
+// Close modal on backdrop click
+document.getElementById('template-modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('template-modal')) closeTemplateModal();
+});
+
+async function addObjectFromTemplate(templateFile) {
+  const stlLoader = new STLLoader();
+
+  try {
+    const geometry = await loadSTL(stlLoader, `/template_stl/${templateFile}`);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+
+    // Compute scene bounding box to determine reasonable scale
+    const sceneBox = new THREE.Box3();
+    for (const entry of objectMeshes) {
+      if (!entry.deleted) sceneBox.expandByObject(entry.mesh);
+    }
+    for (const entry of addedObjects) {
+      if (!entry.deleted) sceneBox.expandByObject(entry.mesh);
+    }
+
+    // Calculate scale: make the template roughly 1/3 of scene height
+    const templateSize = new THREE.Vector3();
+    geometry.boundingBox.getSize(templateSize);
+    const templateMaxDim = Math.max(templateSize.x, templateSize.y, templateSize.z);
+
+    let targetSize = 0.5; // default 0.5m if no scene objects
+    if (!sceneBox.isEmpty()) {
+      const sceneSize = new THREE.Vector3();
+      sceneBox.getSize(sceneSize);
+      targetSize = Math.max(sceneSize.x, sceneSize.y, sceneSize.z) * 0.33;
+    }
+    const scale = targetSize / templateMaxDim;
+
+    // Center geometry at origin
+    const center = new THREE.Vector3();
+    geometry.boundingBox.getCenter(center);
+    geometry.translate(-center.x, -center.y, -center.z);
+
+    // Scale geometry
+    geometry.scale(scale, scale, scale);
+    geometry.computeBoundingBox();
+
+    const material = new THREE.MeshPhongMaterial({
+      color: 0xff8c42,  // orange for added objects
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // Place at scene center
+    if (!sceneBox.isEmpty()) {
+      const sceneCenter = new THREE.Vector3();
+      sceneBox.getCenter(sceneCenter);
+      mesh.position.copy(sceneCenter);
+    }
+
+    scene.add(mesh);
+
+    const entry = {
+      mesh,
+      template_file: templateFile,
+      position: [mesh.position.x, mesh.position.y, mesh.position.z],
+      rotation_degrees: 0,
+      scale: scale,
+      deleted: false,
+      isAdded: true,
+    };
+    addedObjects.push(entry);
+
+    // Add to sidebar and select it
+    buildObjectList();
+    selectObject(entry);
+    updateStats();
+
+    toast(`Added ${templateFile} (scale: ${scale.toFixed(3)})`);
+  } catch (e) {
+    toast(`Failed to add template: ${e.message}`, true);
+  }
+}
+
+// ============================================================================
+// RENDER LOOP
+// ============================================================================
+function animate() {
+  requestAnimationFrame(animate);
+  orbitControls.update();
+  renderer.render(scene, camera);
+}
+
+// ============================================================================
+// BOOT
+// ============================================================================
+init();
+</script>
+</body>
+</html>

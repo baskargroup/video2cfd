@@ -1,0 +1,16 @@
+# Additional requirements for STEP 1 ONLY (semantic segmentation with SAM 3).
+#
+# Step 1 depends on Meta's SAM 3, which is distributed under the SAM License
+# (NOT included in this repository -- it is a separate dependency). Install it
+# from its own source and follow its license terms:
+#
+#   https://github.com/facebookresearch/sam3
+#
+# SAM 3 pulls in its own dependencies (torch, timm, huggingface_hub, ...); model
+# weights are downloaded automatically via huggingface_hub on first use.
+#
+# Steps 2-5 of this pipeline do NOT require SAM 3. If you already have
+# per-frame masks, you can run from step 2 onward with requirements.txt only.
+
+# sam3   # install from https://github.com/facebookresearch/sam3 (SAM License)
+huggingface_hub
