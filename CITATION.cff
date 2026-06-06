@@ -8,16 +8,23 @@ abstract: >-
   depth-band point-cloud filtering, octree-based instance extraction,
   graph-based healing, and template/procedural STL generation.
 authors:
-  # TODO: replace with the full author list before public release.
-  - family-names: "REPLACE-ME"
-    given-names: "REPLACE-ME"
+  - family-names: "Gamdha"
+    given-names: "Dhruv"
+  - family-names: "Ganapathysubramanian"
+    given-names: "Baskar"
+  - family-names: "Krishnamurthy"
+    given-names: "Adarsh"
 license: MIT
 repository-code: "https://github.com/baskargroup/video2cfd"
 preferred-citation:
   type: article
   title: "End-to-End Automated Classroom Reconstruction for CFD"
   authors:
-    - family-names: "REPLACE-ME"
-      given-names: "REPLACE-ME"
+    - family-names: "Gamdha"
+      given-names: "Dhruv"
+    - family-names: "Ganapathysubramanian"
+      given-names: "Baskar"
+    - family-names: "Krishnamurthy"
+      given-names: "Adarsh"
   year: 2026
   # journal / doi: add on publication
