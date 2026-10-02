@@ -1,0 +1,24 @@
+Compact production log trace summary.
+
+Observed OpenFOAM version:
+  OpenFOAM 2412
+
+Observed solver sequence:
+  blockMesh
+  surfaceFeatureExtract
+  snappyHexMesh -overwrite
+  topoSet
+  createPatch -overwrite
+  decomposePar -force
+  simpleFoam -parallel
+  /app/bin/scalarTransportFoamTurbulent -parallel
+
+The production compact trace also showed simpleFoam reaching Time = 1000 and the
+scalar solver resuming from Time = 1000 and reaching approximately Time = 4999.8
+for the auditorium case.
+
+Historical production invocation:
+  /app/bin/scalarTransportFoamTurbulent -parallel
+
+Reproducibility container invocation:
+  scalarTransportFoamTurbulent

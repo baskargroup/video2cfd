@@ -1,0 +1,58 @@
+case_name: auditorium
+description: Tiered lecture-hall auditorium.
+
+geometry:
+  stl_source_dir: data/projects/auditorium/runs/main/4_stl
+  room_stl: room.stl
+  furniture_stl: furniture.stl
+  combined_stl: furniture_and_room.stl
+  measured_height_m: 12.87
+  scale_to_measured_height: true
+
+ventilation:
+  inlet_velocity: [0.0, 0.0, -0.5]
+  scalar_initial_value: 1.0
+  scalar_inlet_value: 0.0
+  ceiling_selection_half_thickness_m: 0.05
+  patches:
+    - {name: inlet_1, role: inlet, shape: rectangle, center_xy: [-8.531, -8.169], size_xy: [0.8, 0.8]}
+    - {name: inlet_2, role: inlet, shape: rectangle, center_xy: [-8.531, 3.422], size_xy: [0.8, 0.8]}
+    - {name: inlet_3, role: inlet, shape: rectangle, center_xy: [0.474, -8.169], size_xy: [0.8, 0.8]}
+    - {name: inlet_4, role: inlet, shape: rectangle, center_xy: [0.474, 3.422], size_xy: [0.8, 0.8]}
+    - {name: inlet_5, role: inlet, shape: rectangle, center_xy: [9.478, -8.169], size_xy: [0.8, 0.8]}
+    - {name: inlet_6, role: inlet, shape: rectangle, center_xy: [9.478, 3.422], size_xy: [0.8, 0.8]}
+    - {name: outlet_1, role: outlet, shape: rectangle, center_xy: [-13.778536, -16.107017], size_xy: [1.49, 1.49]}
+    - {name: outlet_2, role: outlet, shape: rectangle, center_xy: [14.705894, 11.339612], size_xy: [1.49, 1.49]}
+
+transport:
+  scalar_field_name: T
+  molecular_diffusivity_m2_s: 1.5e-5
+  turbulent_schmidt_number: 0.7
+
+turbulence:
+  k: 0.015
+  epsilon: 0.004
+
+mesh:
+  background_padding_m: 0.01
+  background_cells: [120, 116, 52]
+  max_local_cells: 4000000
+  max_global_cells: 35000000
+  room_refinement_level: [2, 2]
+  furniture_refinement_level: [3, 4]
+
+simulation:
+  openfoam_version: "2412"
+  airflow_solver: simpleFoam
+  scalar_solver: scalarTransportFoamTurbulent
+  airflow_end_iter: 1000
+  scalar_end_time: 5000
+  scalar_delta_t: 0.05
+  write_interval: 100
+  scalar_write_interval: 20
+  default_tasks: 56
+  decomposition: [8, 7, 1]
+
+runtime:
+  docker_image: jamesafful/classroom-cfd-worker:hpc-openfoam2412-sct07
+  apptainer_image: worker_hpc_sct07.sif

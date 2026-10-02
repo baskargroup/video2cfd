@@ -29,3 +29,22 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Downstream CFD generated outputs and large artifacts
+runs/
+cfd/runs/
+*.foam
+processor*/
+postProcessing/
+*.sif
+*.tar.gz
+*.zip
+log.*
+status/
+__pycache__/
+*.py[cod]
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
