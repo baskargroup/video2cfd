@@ -6,25 +6,46 @@ abstract: >-
   individually editable, simulation-ready STL geometry for CFD, via NeRF
   reconstruction, SAM 3 concept-prompted segmentation, multi-view consensus and
   depth-band point-cloud filtering, octree-based instance extraction,
-  graph-based healing, and template/procedural STL generation.
+  graph-based healing, and template/procedural STL generation, together with a
+  downstream OpenFOAM workflow (case generation, run scripts and a
+  passive-scalar solver) for airflow and scalar-decay simulations.
 authors:
   - family-names: "Gamdha"
     given-names: "Dhruv"
-  - family-names: "Ganapathysubramanian"
-    given-names: "Baskar"
+  - family-names: "Afful"
+    given-names: "James"
+  - family-names: "Joshi"
+    given-names: "Shambhavi"
+  - family-names: "Passe"
+    given-names: "Ulrike"
   - family-names: "Krishnamurthy"
     given-names: "Adarsh"
+  - family-names: "Ganapathysubramanian"
+    given-names: "Baskar"
+# The repository is MIT, except cfd/solvers/scalarTransportFoamTurbulent/, which
+# is derived from OpenFOAM and licensed GPL-3.0-or-later (see NOTICE.md).
 license: MIT
 repository-code: "https://github.com/baskargroup/video2cfd"
 preferred-citation:
   type: article
-  title: "End-to-End Automated Classroom Reconstruction for CFD"
+  title: "Semi-automated reconstruction of indoor geometry from 360-degree video for CFD-based airflow analysis in classrooms"
   authors:
     - family-names: "Gamdha"
       given-names: "Dhruv"
-    - family-names: "Ganapathysubramanian"
-      given-names: "Baskar"
+    - family-names: "Afful"
+      given-names: "James"
+    - family-names: "Joshi"
+      given-names: "Shambhavi"
+    - family-names: "Passe"
+      given-names: "Ulrike"
     - family-names: "Krishnamurthy"
       given-names: "Adarsh"
+    - family-names: "Ganapathysubramanian"
+      given-names: "Baskar"
   year: 2026
+  url: "https://arxiv.org/abs/2609.23425"
+  identifiers:
+    - type: other
+      value: "arXiv:2609.23425"
+      description: "arXiv preprint"
   # journal / doi: add on publication

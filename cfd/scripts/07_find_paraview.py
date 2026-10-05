@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
+"""Find a ParaView executable (pvpython, pvbatch or paraview) for the optional
+rendering step. Looks at the environment variables PVPYTHON/PVBATCH/PARAVIEW,
+then PATH, then a few common install locations. Linux/macOS only.
+
+With --batch-only the GUI executable 'paraview' is ignored, because it cannot
+run a Python script without a display.
+"""
 import argparse
 import os
-import stat
 import sys
 from pathlib import Path
 
@@ -63,6 +69,8 @@ def main():
     ap = argparse.ArgumentParser(description="Find a ParaView executable usable for automated rendering.")
     ap.add_argument("--prefer", choices=["pvpython", "pvbatch", "paraview"], default="pvpython")
     ap.add_argument("--print-all", action="store_true")
+    ap.add_argument("--batch-only", action="store_true",
+                    help="only accept pvpython or pvbatch (the GUI 'paraview' cannot run scripts headless)")
     args = ap.parse_args()
 
     found = []
@@ -85,6 +93,9 @@ def main():
             return 3
         return 4
 
+    if args.batch_only:
+        found = [p for p in found if p.name in ("pvpython", "pvbatch")]
+
     found.sort(key=rank)
 
     if args.print_all:
@@ -94,7 +105,7 @@ def main():
 
     if not found:
         print(
-            "ERROR: ParaView executable not found. Install ParaView or set PVPYTHON/PVBATCH/PARAVIEW.",
+            "ERROR: ParaView executable not found. Install ParaView or set PVPYTHON/PVBATCH (or PARAVIEW).",
             file=sys.stderr,
         )
         return 1

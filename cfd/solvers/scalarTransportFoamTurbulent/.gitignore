@@ -1,0 +1,7 @@
+# wmake build products (object/dependency directories such as
+# Make/linux64GccDPInt32Opt/). Make/files and Make/options are plain files
+# and are not matched by this pattern.
+Make/*/
+lnInclude/
+*.o
+*.dep

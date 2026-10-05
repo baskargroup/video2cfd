@@ -1,19 +1,40 @@
+# CFD case config for cfd/scripts/01_prepare_openfoam_case.py
+# Paper case (table of final production CFD cases): "Mixed-furniture: +32 chairs + 16 tables + 25 mannequins"
 case_name: class_a_v4_heavy
-description: Class A with chairs, tables, and seated mannequins.
+paper_case: "Mixed-furniture: +32 chairs + 16 tables + 25 mannequins"
+description: Mixed-furniture classroom (Class A) with chairs, tables and mannequins.
 
 geometry:
-  stl_source_dir: data/projects/classroom_a/runs/v4_heavy/4_stl
+  # Wall-aligned output of the geometry pipeline (step 5 writes 4_stl/axis_aligned/).
+  # The patch coordinates below are only valid in this wall-aligned frame.
+  # A relative path is looked up from the current directory, then from the
+  # repository root, then from the folder of this file.
+  stl_source_dir: data/projects/classroom_v2_v2/runs/run_010/4_stl/axis_aligned
   room_stl: room.stl
-  furniture_stl: furniture.stl
-  combined_stl: furniture_and_room.stl
-  measured_height_m: 3.02
-  scale_to_measured_height: true
+  # Furniture surface inside the room: one STL file, a list of STL files (merged
+  # into one surface), or null for an empty room. Alternative: furniture_dir, a
+  # folder whose *.stl files are merged into one surface.
+  # Chairs, tables, seated mannequins and standing figures. The seated-mannequin
+  # template is not watertight; the generator reports this as a warning.
+  furniture_stl: furniture_edited_with_mannequins.stl
+  # Room height after scaling. Both STLs are scaled uniformly about the origin so
+  # that room.stl becomes this high.
+  # Paper (room dimensions table of Appendix A): modelled enclosure height 2.90 m;
+  # the physical floor-to-ceiling reference measured with AR Ruler is 2.87 m.
+  room_height_m: 2.90
+  scale_to_room_height: true
 
 ventilation:
   inlet_velocity: [0.0, 0.0, -0.5]
   scalar_initial_value: 1.0
   scalar_inlet_value: 0.0
+  # Half thickness of the slab around the ceiling plane in which topoSet selects
+  # the patch faces (internal faces are removed again with a boundaryToFace subset).
   ceiling_selection_half_thickness_m: 0.05
+  # Room height at which the absolute patch centres below were defined. Because
+  # the STLs are scaled about the origin, the centres are multiplied by
+  # room_height_m / patch_reference_height_m; the patch sizes stay in metres.
+  patch_reference_height_m: 3.00
   patches:
     - {name: inlet_1, role: inlet, shape: rectangle, center_xy: [-0.757743, -0.265978], size_xy: [0.4, 0.4]}
     - {name: inlet_2, role: inlet, shape: rectangle, center_xy: [0.042257, -0.265978], size_xy: [0.4, 0.4]}
@@ -21,6 +42,26 @@ ventilation:
     - {name: inlet_4, role: inlet, shape: rectangle, center_xy: [0.042257, 0.534022], size_xy: [0.4, 0.4]}
     - {name: outlet_1, role: outlet, shape: rectangle, center_xy: [-2.892842, -3.153846], size_xy: [0.6, 0.6]}
     - {name: outlet_2, role: outlet, shape: rectangle, center_xy: [2.177356, 3.421890], size_xy: [0.6, 0.6]}
+
+# Point monitors: OpenFOAM probes of the scalar T, written at every
+# monitor_write_interval_steps-th time step of the scalar run to
+# postProcessing/monitors/<startTime>/T.
+#
+# PLACEHOLDER LOCATION. The paper uses a single monitor in the occupied zone of
+# each classroom, but the production coordinates are not recorded in this
+# repository. The point below (centre of the room footprint, 1.1 m above the
+# floor) is a stand-in; replace it when the production coordinates are known.
+#
+# A monitor is given either as
+#   position_rel: [fx, fy] with height_above_floor_m
+#       fractions (0..1) of the room footprint; the height is measured from the
+#       floor directly below the monitor, or
+#   position_rel: [fx, fy, fz]
+#       fractions (0..1) of the room bounding box, or
+#   position_xyz: [x, y, z]
+#       metres in the coordinates of the generated (scaled) case; not rescaled.
+monitors:
+  - {name: occupied_zone, position_rel: [0.5, 0.5], height_above_floor_m: 1.1}
 
 transport:
   scalar_field_name: T
@@ -32,24 +73,37 @@ turbulence:
   epsilon: 0.004
 
 mesh:
+  # Background (blockMesh) cell size before local refinement. The number of cells
+  # per axis is round(extent / size). An explicit "background_cells: [nx, ny, nz]"
+  # overrides it.
+  background_cell_size_m: 0.08
   background_padding_m: 0.01
-  background_cells: [60, 60, 30]
   max_local_cells: 2000000
-  max_global_cells: 15000000
+  max_global_cells: 20000000
   room_refinement_level: [2, 2]
   furniture_refinement_level: [3, 4]
+  # [distance_m, level] pairs: cells within 0.02 m of the furniture and mannequin
+  # surfaces are refined to level 4, cells within 0.05 m to level 3.
+  furniture_distance_refinement: [[0.02, 4], [0.05, 3]]
+  # One searchableBox below every inlet patch (patch footprint plus margin_m),
+  # from bottom_height_above_floor_m above the lowest floor point up to the ceiling.
+  diffuser_refinement: {enabled: true, level: 3, bottom_height_above_floor_m: 0.5, margin_m: 0.0}
 
 simulation:
   openfoam_version: "2412"
   airflow_solver: simpleFoam
   scalar_solver: scalarTransportFoamTurbulent
+  # Fixed iteration budget of the steady airflow solve (no residual threshold).
   airflow_end_iter: 1000
-  scalar_end_time: 5000
+  # End time of the scalar run on the case clock. The scalar run starts at the
+  # last airflow time (1000), so this is a decay window of 1200 s.
+  scalar_end_time: 2200
   scalar_delta_t: 0.05
   write_interval: 100
   scalar_write_interval: 20
+  monitor_write_interval_steps: 1
   default_tasks: 56
-  decomposition: [8, 7, 1]
+  decomposition_method: scotch
 
 runtime:
   docker_image: jamesafful/classroom-cfd-worker:hpc-openfoam2412-sct07

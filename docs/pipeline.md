@@ -35,7 +35,16 @@ data/projects/<name>/runs/<run_id>/
     room.stl                              # step-5 enclosure
     furniture_and_room.stl                # furniture + room
     (furniture_edited*.stl)               # produced only by the 4b editor (human QA)
+    axis_aligned/                         # wall-aligned copies of the STLs above (step 5);
+                                          #   the input of the CFD step
 ```
+
+Step 5 writes `axis_aligned/` when the room is rotated relative to the coordinate
+axes (`room.rotation_deg`, set in the config or in the editor, is not zero). It
+contains the same files rotated so that the walls are parallel to x and y. The
+downstream CFD workflow in `cfd/` reads its geometry from this folder; see
+[`cfd_reproduce.md`](cfd_reproduce.md). If the room is not rotated, no
+`axis_aligned/` folder is written and `4_stl/` itself is wall-aligned.
 
 ## Step 4 placement modes
 

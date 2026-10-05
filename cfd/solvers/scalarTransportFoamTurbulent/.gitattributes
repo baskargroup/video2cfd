@@ -1,0 +1,5 @@
+# Keep LF line endings on every platform (also on Windows checkouts with
+# core.autocrlf=true): wmake, cpp and the compiler read Make/files,
+# Make/options and the sources inside a Linux OpenFOAM environment, where a
+# trailing carriage return breaks the build.
+* text=auto eol=lf

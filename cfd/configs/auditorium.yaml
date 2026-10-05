@@ -1,19 +1,50 @@
+# CFD case config for cfd/scripts/01_prepare_openfoam_case.py
+# Paper case (table of final production CFD cases): "Auditorium: 273 chairs + 2 tables"
+#
+# NOTE: the mesh settings of this case are provisional (see
+# cfd/docs/paper_consistency_checklist.md, "Auditorium mesh size"). Choose
+# mesh.background_cell_size_m or mesh.background_cells below before running it
+# at production resolution.
 case_name: auditorium
-description: Tiered lecture-hall auditorium.
+paper_case: "Auditorium: 273 chairs + 2 tables"
+description: Tiered lecture-hall auditorium with chairs and tables.
 
 geometry:
-  stl_source_dir: data/projects/auditorium/runs/main/4_stl
+  # Wall-aligned output of the geometry pipeline (step 5 writes 4_stl/axis_aligned/).
+  # The patch coordinates below are only valid in this wall-aligned frame.
+  # A relative path is looked up from the current directory, then from the
+  # repository root, then from the folder of this file.
+  stl_source_dir: data/projects/audi_v1/runs/run_002/4_stl/axis_aligned
   room_stl: room.stl
-  furniture_stl: furniture.stl
-  combined_stl: furniture_and_room.stl
-  measured_height_m: 12.87
-  scale_to_measured_height: true
+  # Furniture surface inside the room: one STL file, a list of STL files (merged
+  # into one surface), or null for an empty room. Alternative: furniture_dir, a
+  # folder whose *.stl files are merged into one surface.
+  # Chairs and tables after human QA in the scene editor (no mannequins).
+  # The furniture surface used for the paper contains 273 chairs and 2 tables.
+  # The chair count of an edited scene depends on the manual corrections made
+  # in the scene editor (chairs can be added, removed or moved), so another
+  # editor state of the same run can have a different count. The number of
+  # chair_*.stl files in furniture_individual_edited/ of the run gives the
+  # chair count of the editor state.
+  furniture_stl: furniture_edited.stl
+  # Room height after scaling. Both STLs are scaled uniformly about the origin so
+  # that room.stl becomes this high.
+  # Paper (room dimensions table of Appendix A): modelled enclosure height 12.87 m;
+  # the physical reference measured with AR Ruler is 12.88 m.
+  room_height_m: 12.87
+  scale_to_room_height: true
 
 ventilation:
   inlet_velocity: [0.0, 0.0, -0.5]
   scalar_initial_value: 1.0
   scalar_inlet_value: 0.0
+  # Half thickness of the slab around the ceiling plane in which topoSet selects
+  # the patch faces (internal faces are removed again with a boundaryToFace subset).
   ceiling_selection_half_thickness_m: 0.05
+  # Room height at which the absolute patch centres below were defined. Because
+  # the STLs are scaled about the origin, the centres are multiplied by
+  # room_height_m / patch_reference_height_m; the patch sizes stay in metres.
+  patch_reference_height_m: 12.85
   patches:
     - {name: inlet_1, role: inlet, shape: rectangle, center_xy: [-8.531, -8.169], size_xy: [0.8, 0.8]}
     - {name: inlet_2, role: inlet, shape: rectangle, center_xy: [-8.531, 3.422], size_xy: [0.8, 0.8]}
@@ -23,6 +54,39 @@ ventilation:
     - {name: inlet_6, role: inlet, shape: rectangle, center_xy: [9.478, 3.422], size_xy: [0.8, 0.8]}
     - {name: outlet_1, role: outlet, shape: rectangle, center_xy: [-13.778536, -16.107017], size_xy: [1.49, 1.49]}
     - {name: outlet_2, role: outlet, shape: rectangle, center_xy: [14.705894, 11.339612], size_xy: [1.49, 1.49]}
+
+# Point monitors: OpenFOAM probes of the scalar T, written at every
+# monitor_write_interval_steps-th time step of the scalar run to
+# postProcessing/monitors/<startTime>/T.
+#
+# PLACEHOLDER LOCATIONS. The paper uses three monitors in the auditorium (front,
+# middle and back rows), but the production coordinates are not recorded in this
+# repository. The points below are stand-ins on the centre line of the room at
+# 25%, 50% and 75% of its depth (the stage is at the low-y end of the room; the
+# seating rises towards +y); replace them when the production coordinates are
+# known.
+#
+# The auditorium floor is tiered, so the height is NOT measured from the lowest
+# point of the room: height_above_floor_m is measured from the floor surface of
+# room.stl directly below each monitor (found by the generator). 2.0 m is used
+# for the stand-ins because on the sloping floor the seat backs of the next
+# (higher) row reach about 1.4 m above the local floor; at 2.0 m all three
+# points are in the air, at least 0.4 m away from any chair surface. The
+# generator stops if a monitor is outside the room and warns if it falls inside
+# a furniture body.
+#
+# A monitor is given either as
+#   position_rel: [fx, fy] with height_above_floor_m
+#       fractions (0..1) of the room footprint; the height is measured from the
+#       floor directly below the monitor, or
+#   position_rel: [fx, fy, fz]
+#       fractions (0..1) of the room bounding box, or
+#   position_xyz: [x, y, z]
+#       metres in the coordinates of the generated (scaled) case; not rescaled.
+monitors:
+  - {name: front, position_rel: [0.5, 0.25], height_above_floor_m: 2.0}
+  - {name: middle, position_rel: [0.5, 0.5], height_above_floor_m: 2.0}
+  - {name: back, position_rel: [0.5, 0.75], height_above_floor_m: 2.0}
 
 transport:
   scalar_field_name: T
@@ -34,24 +98,47 @@ turbulence:
   epsilon: 0.004
 
 mesh:
+  # Background (blockMesh) cell size before local refinement. The number of cells
+  # per axis is round(extent / size). An explicit "background_cells: [nx, ny, nz]"
+  # overrides it.
+  background_cell_size_m: 0.08
+  # Note: at 0.08 m the auditorium background mesh alone has about 22 million
+  # cells (about 18 million inside the fluid; the tiered floor removes the
+  # rest), and the generator's rough estimate for the refined mesh is far above
+  # max_global_cells (the generator warns). The paper reports 27.85 million
+  # cells for the production auditorium case; the refinement settings of that
+  # case that the paper does not list are not recorded in this repository.
+  # The commented setting below gives a smaller mesh with 0.25 m cells
+  # (Level 4 is then 15.6 mm and Level 3 is 31 mm); uncomment it to use it.
+  # The auditorium mesh settings are provisional.
+  # background_cells: [120, 116, 52]
   background_padding_m: 0.01
-  background_cells: [120, 116, 52]
   max_local_cells: 4000000
-  max_global_cells: 35000000
+  max_global_cells: 40000000
   room_refinement_level: [2, 2]
   furniture_refinement_level: [3, 4]
+  # [distance_m, level] pairs: cells within 0.02 m of the furniture and mannequin
+  # surfaces are refined to level 4, cells within 0.05 m to level 3.
+  furniture_distance_refinement: [[0.02, 4], [0.05, 3]]
+  # One searchableBox below every inlet patch (patch footprint plus margin_m),
+  # from bottom_height_above_floor_m above the lowest floor point up to the ceiling.
+  diffuser_refinement: {enabled: true, level: 3, bottom_height_above_floor_m: 0.5, margin_m: 0.0}
 
 simulation:
   openfoam_version: "2412"
   airflow_solver: simpleFoam
   scalar_solver: scalarTransportFoamTurbulent
+  # Fixed iteration budget of the steady airflow solve (no residual threshold).
   airflow_end_iter: 1000
+  # End time of the scalar run on the case clock. The scalar run starts at the
+  # last airflow time (1000), so this is a decay window of 4000 s.
   scalar_end_time: 5000
   scalar_delta_t: 0.05
   write_interval: 100
   scalar_write_interval: 20
+  monitor_write_interval_steps: 1
   default_tasks: 56
-  decomposition: [8, 7, 1]
+  decomposition_method: scotch
 
 runtime:
   docker_image: jamesafful/classroom-cfd-worker:hpc-openfoam2412-sct07

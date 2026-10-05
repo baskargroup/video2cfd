@@ -1,3 +1,5 @@
+[Note, 2026-10-04: hand-written summary of the production logs; the logs themselves are not in this repository. The current run sequence is documented in docs/cfd_reproduce.md.]
+
 Compact production log trace summary.
 
 Observed OpenFOAM version:

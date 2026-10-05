@@ -1,0 +1,540 @@
+#!/bin/bash
+# =============================================================================
+# Allrun - run one generated video2cfd OpenFOAM case from meshing to the
+#          passive-scalar decay run.
+#
+# cfd/scripts/01_prepare_openfoam_case.py copies this file (template:
+# cfd/templates/Allrun) into every case directory. Run it INSIDE an OpenFOAM
+# v2412 environment (etc/bashrc sourced). It changes into its own directory
+# first, so it can be started from anywhere:
+#
+#     ./Allrun                              # serial
+#     NPROCS=56 ./Allrun                    # parallel (decomposePar + mpirun)
+#     MESH_ONLY=1 ./Allrun                  # stop after meshing + patch check
+#     STAGES="mesh flow" NPROCS=56 ./Allrun # no scalar run
+#     STAGES=scalar NPROCS=56 ./Allrun      # only the scalar stage (resume)
+#
+# Stages (Section 3.5 of the paper):
+#   mesh    01 blockMesh
+#           02 surfaceFeatureExtract
+#           03 snappyHexMesh -overwrite
+#           04 topoSet
+#           05 createPatch -overwrite
+#           06 checkMesh
+#           07 check: inlet and outlet patches exist and are not empty
+#   flow    08 decomposePar -force            (only if NPROCS > 1)
+#           09 simpleFoam                     (fixed iteration budget)
+#   scalar  10 field transfer: the time-0 scalar field T is copied into the
+#              last flow time directory, where the scalar solver starts (a
+#              time directory later than the flow end that has no T is the
+#              incomplete write of an interrupted scalar run and stops the
+#              script instead of being filled with the initial field)
+#           11 scalarTransportFoamTurbulent   (system/controlDict.scalar)
+#           12 reconstructPar -latestTime     (only if NPROCS > 1)
+#
+# Every tool writes log.<application> (an older log of the same tool is kept
+# as log.<application>.<date>). A stage that succeeded leaves
+# status/<nn>_<name>.done and is skipped when Allrun is started again, so an
+# interrupted job can simply be resubmitted. A failing tool stops the script
+# with a non-zero exit code and leaves no .done file. When a stage is run
+# again, the .done files of all later stages are removed, because their
+# results are stale.
+#
+# Environment variables:
+#   NPROCS            number of MPI ranks (default 1 = serial). For NPROCS > 1
+#                     numberOfSubdomains in system/decomposeParDict is set to
+#                     NPROCS before decomposePar.
+#   MPI_LAUNCHER      parallel launcher (default "mpirun -np $NPROCS").
+#   MESH_ONLY=1       same as STAGES=mesh.
+#   STAGES            any of "mesh flow scalar" (default: all three; "all").
+#   FORCE=1           re-run the selected stages even if .done files exist.
+#   VERBOSE=1         also echo tool output to the terminal.
+#   FLOW_SOLVER       default simpleFoam.
+#   SCALAR_SOLVER     default scalarTransportFoamTurbulent.
+#   SCALAR_FIELD      default T (the concentration C of the paper).
+#   REQUIRED_PATCHES  default "inlet outlet".
+#   FOAM_BASHRC       OpenFOAM bashrc that is sourced only if no OpenFOAM
+#                     environment is active
+#                     (default /usr/lib/openfoam/openfoam2412/etc/bashrc).
+# =============================================================================
+
+set -euo pipefail
+
+usage() {
+    sed -n '2,/^# ====.*$/p' "${BASH_SOURCE[0]}" | sed -e 's/^# \{0,1\}//' -e '$d'
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    "") ;;
+    *) echo "Allrun: ERROR: unexpected argument '$1' (settings are passed as environment variables; see ./Allrun --help)" >&2; exit 2 ;;
+esac
+set --
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
+CASE_DIR="$PWD"
+
+NPROCS="${NPROCS:-1}"
+MESH_ONLY="${MESH_ONLY:-0}"
+STAGES="${STAGES:-mesh flow scalar}"
+FORCE="${FORCE:-0}"
+VERBOSE="${VERBOSE:-0}"
+FLOW_SOLVER="${FLOW_SOLVER:-simpleFoam}"
+SCALAR_SOLVER="${SCALAR_SOLVER:-scalarTransportFoamTurbulent}"
+SCALAR_FIELD="${SCALAR_FIELD:-T}"
+REQUIRED_PATCHES="${REQUIRED_PATCHES:-inlet outlet}"
+
+info() { echo "Allrun: $*"; }
+warn() { echo "Allrun: WARNING: $*" >&2; }
+die()  { echo "Allrun: ERROR: $*" >&2; exit 1; }
+
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "Allrun: FAILED (exit code $rc) in $CASE_DIR" >&2; fi' EXIT
+
+# ----------------------------------------------------------------------------
+# Settings
+# ----------------------------------------------------------------------------
+case "$NPROCS" in
+    ''|*[!0-9]*) die "NPROCS must be a positive integer (got '$NPROCS')" ;;
+esac
+if [ "$NPROCS" -lt 1 ]; then
+    die "NPROCS must be a positive integer (got '$NPROCS')"
+fi
+
+MPI_LAUNCHER="${MPI_LAUNCHER:-mpirun -np ${NPROCS}}"
+read -r -a MPI_CMD <<< "$MPI_LAUNCHER"
+
+if [ "$MESH_ONLY" = "1" ]; then
+    STAGES="mesh"
+fi
+DO_MESH=0
+DO_FLOW=0
+DO_SCALAR=0
+for stage in ${STAGES//,/ }; do
+    case "$stage" in
+        all)    DO_MESH=1; DO_FLOW=1; DO_SCALAR=1 ;;
+        mesh)   DO_MESH=1 ;;
+        flow)   DO_FLOW=1 ;;
+        scalar) DO_SCALAR=1 ;;
+        *)      die "unknown stage '$stage' in STAGES (use any of: mesh flow scalar, or all)" ;;
+    esac
+done
+if [ "$DO_MESH" -eq 0 ] && [ "$DO_FLOW" -eq 0 ] && [ "$DO_SCALAR" -eq 0 ]; then
+    die "STAGES is empty (use any of: mesh flow scalar, or all)"
+fi
+
+# ----------------------------------------------------------------------------
+# OpenFOAM environment
+# ----------------------------------------------------------------------------
+if ! command -v blockMesh >/dev/null 2>&1; then
+    foam_bashrc="${FOAM_BASHRC:-/usr/lib/openfoam/openfoam2412/etc/bashrc}"
+    if [ -f "$foam_bashrc" ]; then
+        info "no OpenFOAM environment active; sourcing $foam_bashrc"
+        set +eu
+        # shellcheck disable=SC1090
+        . "$foam_bashrc"
+        set -eu
+    fi
+fi
+if ! command -v blockMesh >/dev/null 2>&1; then
+    die "OpenFOAM is not available (blockMesh not on PATH). Source the OpenFOAM v2412 etc/bashrc first, set FOAM_BASHRC, or use cfd/scripts/run_openfoam_docker.sh / run_openfoam_apptainer.sh."
+fi
+case "${WM_PROJECT_VERSION:-unknown}" in
+    v2412|2412) ;;
+    *) warn "OpenFOAM version is '${WM_PROJECT_VERSION:-unknown}'; the paper cases were run with v2412." ;;
+esac
+
+[ -f system/controlDict ] || die "system/controlDict not found in $CASE_DIR (is this a generated case directory?)"
+mkdir -p status
+
+# ----------------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------------
+STAGE_RAN=0
+
+# run_stage <status-name> <log-file> <command...>
+# Runs the command with stdout+stderr in the log file, stops the script if the
+# command fails, and writes status/<status-name>.done only on success.
+run_stage() {
+    local name="$1" log="$2"
+    shift 2
+    local marker="status/${name}.done"
+    STAGE_RAN=0
+    if [ -f "$marker" ] && [ "$FORCE" != "1" ]; then
+        info "[skip] ${name} (${marker} exists; FORCE=1 re-runs it)"
+        return 0
+    fi
+    rm -f "$marker"
+    if [ -s "$log" ]; then
+        mv -f "$log" "${log}.$(date +%Y%m%d-%H%M%S)"
+    fi
+    info "[run ] ${name}: $*   (log: ${log})"
+    local rc=0
+    if [ "$VERBOSE" = "1" ]; then
+        # pipefail is active in this shell, so tee cannot hide a failing tool
+        "$@" 2>&1 | tee "$log" || rc=$?
+    else
+        "$@" > "$log" 2>&1 || rc=$?
+    fi
+    if [ "$rc" -eq 0 ] && grep -q "FOAM FATAL" "$log"; then
+        warn "${name}: exit code 0 but the log contains a FOAM FATAL error"
+        rc=1
+    fi
+    if [ "$rc" -ne 0 ]; then
+        {
+            echo "Allrun: ERROR: stage ${name} failed (exit code ${rc}). Last lines of ${log}:"
+            tail -n 25 "$log" | sed 's/^/    | /'
+        } >&2
+        exit "$rc"
+    fi
+    # checkMesh changes nothing; every other stage makes the results of the
+    # later stages stale, so their markers are removed.
+    if [ "$name" != "06_checkMesh" ]; then
+        invalidate_after "$name"
+    fi
+    date '+%Y-%m-%dT%H:%M:%S%z' > "$marker"
+    STAGE_RAN=1
+}
+
+# Remove the .done markers of all stages that come after stage $1 (<nn>_<name>).
+invalidate_after() {
+    local current="${1%%_*}" file number
+    for file in status/[0-9][0-9]_*.done; do
+        [ -f "$file" ] || continue
+        number="${file##*/}"
+        number="${number%%_*}"
+        if [ "$((10#$number))" -gt "$((10#$current))" ]; then
+            rm -f "$file"
+        fi
+    done
+}
+
+# Install system/controlDict.<flow|scalar> as the active system/controlDict.
+use_control_dict() {
+    local src="system/controlDict.$1"
+    if [ -f "$src" ]; then
+        cp -f "$src" system/controlDict
+    elif [ "$1" = "scalar" ]; then
+        die "$src not found; the scalar stage needs it (regenerate the case with cfd/scripts/01_prepare_openfoam_case.py)"
+    else
+        warn "$src not found; using system/controlDict as it is"
+    fi
+}
+
+# Print the number of faces of patch $1 in constant/polyMesh/boundary
+# (prints nothing if the patch does not exist).
+patch_nfaces() {
+    awk -v patch="$1" '
+        { sub(/\r$/, "") }
+        !inside && NF == 1 && $1 == patch { inside = 1; next }
+        inside && $1 == "nFaces" { v = $2; sub(/;.*/, "", v); print v; exit }
+        inside && $1 == "}" { exit }
+    ' constant/polyMesh/boundary
+}
+
+# Fail unless every patch in REQUIRED_PATCHES exists with at least one face.
+check_patches() {
+    local boundary="constant/polyMesh/boundary" patch n bad=0
+    [ -f "$boundary" ] || die "$boundary not found; run the mesh stage first (STAGES=mesh)"
+    for patch in $REQUIRED_PATCHES; do
+        n="$(patch_nfaces "$patch")"
+        if [ -z "$n" ]; then
+            echo "Allrun: ERROR: patch '${patch}' is missing from ${boundary}" >&2
+            bad=1
+        elif ! [[ "$n" =~ ^[0-9]+$ ]]; then
+            echo "Allrun: ERROR: could not read nFaces of patch '${patch}' in ${boundary} (got '${n}')" >&2
+            bad=1
+        elif [ "$n" -eq 0 ]; then
+            echo "Allrun: ERROR: patch '${patch}' has 0 faces in ${boundary}" >&2
+            bad=1
+        else
+            info "patch ${patch}: ${n} faces"
+        fi
+    done
+    if [ "$bad" -ne 0 ]; then
+        rm -f status/07_checkPatches.done
+        die "topoSet/createPatch did not produce non-empty patches (${REQUIRED_PATCHES}). Check log.topoSet and log.createPatch, and that the patch rectangles in the YAML config lie on the ceiling of the scaled room."
+    fi
+}
+
+# Print the numerically largest time-directory name inside directory $1
+# (non-numeric names such as constant, system, processor0 are ignored;
+# prints nothing if there is no time directory).
+latest_time_dir() {
+    local root="$1" path name best=""
+    local re='^[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?$'
+    for path in "$root"/*/; do
+        name="${path%/}"
+        name="${name##*/}"
+        [[ "$name" =~ $re ]] || continue
+        if [ -z "$best" ] || awk -v a="$name" -v b="$best" 'BEGIN { exit !(a + 0 > b + 0) }'; then
+            best="$name"
+        fi
+    done
+    if [ -n "$best" ]; then
+        printf '%s\n' "$best"
+    fi
+}
+
+# Fill the array ROOTS with the directories that hold the solution time
+# directories: "." for a serial run, the processor directories for a parallel
+# run (processorN, or processorsN for the collated file handler).
+ROOTS=()
+solution_roots() {
+    local dir count=0
+    ROOTS=()
+    if [ "$NPROCS" -gt 1 ]; then
+        for dir in processor*/; do
+            dir="${dir%/}"
+            [[ "$dir" =~ ^processors?[0-9]+ ]] || continue
+            [ -d "$dir" ] || continue
+            ROOTS+=("$dir")
+            if [[ "$dir" =~ ^processor[0-9]+$ ]]; then
+                count=$((count + 1))
+            fi
+        done
+        if [ "${#ROOTS[@]}" -eq 0 ]; then
+            die "NPROCS=${NPROCS} but the case has no processor directories; run the flow stage first (it runs decomposePar)"
+        fi
+        if [ "$count" -gt 0 ] && [ "$count" -ne "$NPROCS" ]; then
+            die "the case is decomposed into ${count} processor directories but NPROCS=${NPROCS}; use NPROCS=${count} or re-run the flow stage with FORCE=1"
+        fi
+    else
+        if [ -d processor0 ]; then
+            die "the case contains processor directories but NPROCS=1; set NPROCS to the number of processors, or remove the processor* directories for a serial run"
+        fi
+        ROOTS=(.)
+    fi
+}
+
+# endTime entry of a controlDict file.
+control_dict_end_time() {
+    awk '$1 == "endTime" { v = $2; sub(/;.*/, "", v); print v; exit }' "$1"
+}
+
+# endTime of the flow controlDict (the time at which the scalar run starts);
+# prints nothing if system/controlDict.flow is missing.
+flow_end_time() {
+    if [ -f system/controlDict.flow ]; then
+        control_dict_end_time system/controlDict.flow
+    fi
+}
+
+# Before the flow solve: time directories beyond the flow end time can only be
+# left-overs of an earlier scalar run; the scalar solver would start from them
+# (startFrom latestTime), so they must be removed first.
+check_no_stale_times() {
+    local dict="system/controlDict.flow" expected latest
+    if [ -f status/09_simpleFoam.done ] && [ "$FORCE" != "1" ]; then
+        return 0
+    fi
+    [ -f "$dict" ] || dict="system/controlDict"
+    expected="$(control_dict_end_time "$dict")"
+    [ -n "$expected" ] || return 0
+    latest="$(latest_time_dir "${ROOTS[0]}")"
+    [ -n "$latest" ] || return 0
+    if awk -v a="$latest" -v b="$expected" 'BEGIN { exit !(a + 0 > b + 0) }'; then
+        die "time directories of an earlier run are present in ${ROOTS[0]} (latest: ${latest}; the flow solve ends at ${expected}). Remove the time directories larger than ${expected} before the flow solve is run again (for a parallel case, FORCE=1 STAGES=\"flow scalar\" re-runs decomposePar -force, which removes the processor directories)."
+    fi
+}
+
+# After the flow solve: the last time directory must be the fixed iteration
+# budget (endTime of the flow controlDict); the scalar clock starts there.
+check_flow_end_time() {
+    local dict="system/controlDict.flow" expected latest
+    [ -f "$dict" ] || dict="system/controlDict"
+    expected="$(control_dict_end_time "$dict")"
+    if [ -z "$expected" ]; then
+        warn "could not read endTime from $dict; flow end time not checked"
+        return 0
+    fi
+    solution_roots
+    latest="$(latest_time_dir "${ROOTS[0]}")"
+    if [ -z "$latest" ]; then
+        rm -f status/09_simpleFoam.done
+        die "after ${FLOW_SOLVER} there is no time directory in ${ROOTS[0]} (see log.${FLOW_SOLVER})"
+    fi
+    if awk -v a="$latest" -v b="$expected" 'BEGIN { exit !(a + 0 > b + 0) }'; then
+        rm -f status/09_simpleFoam.done
+        die "after ${FLOW_SOLVER} the latest time directory in ${ROOTS[0]} is ${latest}, but endTime in ${dict} is ${expected}: time directories of an earlier run are still present. Remove the time directories larger than ${expected} and start again."
+    fi
+    if awk -v a="$latest" -v b="$expected" 'BEGIN { exit !(a + 0 < b + 0) }'; then
+        rm -f status/09_simpleFoam.done
+        die "${FLOW_SOLVER} stopped at time ${latest}, before endTime ${expected} of ${dict}. The scalar run must start from the end of the fixed iteration budget (see log.${FLOW_SOLVER}; the flow fvSolution must not contain a residualControl block)."
+    fi
+    info "flow solve finished at time ${latest}"
+}
+
+require_scalar_solver() {
+    if command -v "$SCALAR_SOLVER" >/dev/null 2>&1; then
+        return 0
+    fi
+    cat >&2 <<EOF
+Allrun: ERROR: the scalar solver '${SCALAR_SOLVER}' is not on PATH.
+  It is the custom passive-scalar solver of the paper (effective diffusivity
+  D + nu_t/Sc_t on the frozen simpleFoam flow field). Either
+    * build it in this OpenFOAM environment from the repository source:
+          cd <repo>/cfd/solvers/scalarTransportFoamTurbulent && wmake
+      (see the README in that folder; the binary must end up on PATH), or
+    * run the case inside the runtime image, which ships the binary:
+          bash <repo>/cfd/scripts/run_openfoam_docker.sh <case_dir>
+          bash <repo>/cfd/scripts/run_openfoam_apptainer.sh <case_dir>
+  To run only meshing and the flow solve use STAGES="mesh flow".
+EOF
+    exit 1
+}
+
+# Field transfer (the "Field Transfer" box of the workflow figure): simpleFoam
+# neither reads nor writes the scalar, so the initial scalar field of time 0 is
+# copied into the last flow time directory, from which the scalar solver starts
+# (startFrom latestTime). An existing scalar field is never overwritten, so a
+# resumed scalar run keeps its solution.
+transfer_scalar_field() {
+    local marker="status/10_fieldTransfer.done"
+    if [ -f "$marker" ] && [ "$FORCE" != "1" ]; then
+        info "[skip] 10_fieldTransfer (${marker} exists; FORCE=1 re-runs it)"
+        return 0
+    fi
+    rm -f "$marker"
+    solution_roots
+    local root latest ref="" src dst ext copied=0 kept=0 flow_end
+    flow_end="$(flow_end_time)"
+    for root in "${ROOTS[@]}"; do
+        latest="$(latest_time_dir "$root")"
+        [ -n "$latest" ] || die "field transfer: no time directory in ${root}"
+        if ! awk -v t="$latest" 'BEGIN { exit !(t + 0 > 0) }'; then
+            die "field transfer: the latest time directory in ${root} is ${latest}; the flow solve has not written a result yet (run the flow stage first)"
+        fi
+        if [ -z "$ref" ]; then
+            ref="$latest"
+        elif [ "$latest" != "$ref" ]; then
+            die "field transfer: latest time directory is ${latest} in ${root} but ${ref} in ${ROOTS[0]}; the processor directories are inconsistent"
+        fi
+        # A time later than the flow end can only have been written by an earlier
+        # scalar run, so it must already hold the scalar field. OpenFOAM writes a
+        # time directory field by field: if the scalar job was killed while
+        # writing it, the directory has U, nut and phi but no T. Copying the
+        # time-0 field into it would restart the decay from C = 1 at that time
+        # without any error, so this is refused.
+        if [ -n "$flow_end" ] && awk -v a="$latest" -v b="$flow_end" 'BEGIN { exit !(a + 0 > b + 0) }'; then
+            if [ ! -e "${root}/${latest}/${SCALAR_FIELD}" ] && [ ! -e "${root}/${latest}/${SCALAR_FIELD}.gz" ]; then
+                die "field transfer: ${root}/${latest} is later than the flow end time ${flow_end} but contains no ${SCALAR_FIELD}; it is the incomplete write of an interrupted scalar run. Remove that time directory (in every processor directory for a parallel case) and start again."
+            fi
+        fi
+        ext=""
+        if [ ! -f "${root}/0/${SCALAR_FIELD}" ] && [ -f "${root}/0/${SCALAR_FIELD}.gz" ]; then
+            ext=".gz"
+        fi
+        src="${root}/0/${SCALAR_FIELD}${ext}"
+        dst="${root}/${latest}/${SCALAR_FIELD}${ext}"
+        [ -f "$src" ] || die "field transfer: source file ${src} is missing (the initial scalar field must exist at time 0; for a parallel run it is created by decomposePar from 0/${SCALAR_FIELD})"
+        if [ -e "${root}/${latest}/${SCALAR_FIELD}" ] || [ -e "${root}/${latest}/${SCALAR_FIELD}.gz" ]; then
+            kept=$((kept + 1))
+        else
+            cp -p "$src" "$dst"
+            copied=$((copied + 1))
+        fi
+    done
+    info "[run ] 10_fieldTransfer: ${SCALAR_FIELD} of time 0 -> time ${ref} (${copied} file(s) copied, ${kept} existing file(s) left untouched)"
+    invalidate_after 10_fieldTransfer
+    date '+%Y-%m-%dT%H:%M:%S%z' > "$marker"
+}
+
+# ----------------------------------------------------------------------------
+# Run
+# ----------------------------------------------------------------------------
+info "case      : $CASE_DIR"
+info "stages    : ${STAGES//,/ }"
+if [ "$NPROCS" -gt 1 ]; then
+    info "parallel  : ${NPROCS} ranks, launcher '${MPI_LAUNCHER}'"
+else
+    info "parallel  : no (NPROCS=1)"
+fi
+info "OpenFOAM  : ${WM_PROJECT_VERSION:-unknown}"
+
+# Fail before hours of meshing if the scalar solver is not installed.
+if [ "$DO_SCALAR" -eq 1 ]; then
+    require_scalar_solver
+fi
+
+if [ "$DO_MESH" -eq 1 ]; then
+    use_control_dict flow
+    run_stage 01_blockMesh             log.blockMesh             blockMesh
+    run_stage 02_surfaceFeatureExtract log.surfaceFeatureExtract surfaceFeatureExtract
+    run_stage 03_snappyHexMesh         log.snappyHexMesh         snappyHexMesh -overwrite
+    run_stage 04_topoSet               log.topoSet               topoSet
+    run_stage 05_createPatch           log.createPatch           createPatch -overwrite
+    run_stage 06_checkMesh             log.checkMesh             checkMesh
+    grep -E '^ *cells:|Mesh OK|Failed [0-9]+ mesh checks' log.checkMesh | sed 's/^ */Allrun: checkMesh: /' || true
+    if grep -q 'Failed [0-9]* mesh checks' log.checkMesh; then
+        warn "checkMesh reports failed mesh checks (see log.checkMesh); continuing"
+    fi
+    check_patches
+    date '+%Y-%m-%dT%H:%M:%S%z' > status/07_checkPatches.done
+    info "mesh stage complete"
+fi
+
+if [ "$DO_FLOW" -eq 1 ]; then
+    if [ "$DO_MESH" -eq 0 ]; then
+        check_patches
+    fi
+    use_control_dict flow
+    if [ "$NPROCS" -gt 1 ]; then
+        if [ ! -f status/08_decomposePar.done ] || [ "$FORCE" = "1" ]; then
+            info "setting numberOfSubdomains ${NPROCS} in system/decomposeParDict (log: log.foamDictionary)"
+            foamDictionary -entry numberOfSubdomains -set "$NPROCS" system/decomposeParDict > log.foamDictionary 2>&1 \
+                || die "foamDictionary could not set numberOfSubdomains in system/decomposeParDict (see log.foamDictionary)"
+        fi
+        run_stage 08_decomposePar log.decomposePar decomposePar -force
+        solution_roots
+        check_no_stale_times
+        run_stage 09_simpleFoam "log.${FLOW_SOLVER}" "${MPI_CMD[@]}" "$FLOW_SOLVER" -parallel
+    else
+        solution_roots
+        check_no_stale_times
+        run_stage 09_simpleFoam "log.${FLOW_SOLVER}" "$FLOW_SOLVER"
+    fi
+    if [ "$STAGE_RAN" -eq 1 ]; then
+        check_flow_end_time
+    fi
+    info "flow stage complete"
+fi
+
+if [ "$DO_SCALAR" -eq 1 ]; then
+    require_scalar_solver
+    [ -f system/controlDict.scalar ] || die "system/controlDict.scalar not found; the scalar stage needs it"
+    if [ ! -f status/09_simpleFoam.done ]; then
+        die "the flow solve has not completed (status/09_simpleFoam.done is missing), so there is no frozen flow field for the scalar run. Run the flow stage first, e.g. STAGES=\"flow scalar\"."
+    fi
+    transfer_scalar_field
+    use_control_dict scalar
+    if [ "$NPROCS" -gt 1 ]; then
+        solution_roots
+        run_stage 11_scalarTransport "log.${SCALAR_SOLVER}" "${MPI_CMD[@]}" "$SCALAR_SOLVER" -parallel
+        run_stage 12_reconstructPar log.reconstructPar reconstructPar -latestTime
+    else
+        solution_roots
+        run_stage 11_scalarTransport "log.${SCALAR_SOLVER}" "$SCALAR_SOLVER"
+    fi
+    info "scalar stage complete"
+    scalar_start="$(flow_end_time)"
+    cat <<EOF
+
+Allrun: finished. The monitor (probe) histories of ${SCALAR_FIELD} are in
+    ${CASE_DIR}/postProcessing/monitors/<startTime>/${SCALAR_FIELD}
+Convert them to CSV and compute the clearance metrics (t50, t80, t90, AUC) with
+    python cfd/scripts/06_extract_probe_csv.py "${CASE_DIR}" --metrics
+(run from the repository root, outside the container if you used one). As in
+the paper, the metrics are measured from the start of the scalar run
+(t0 = ${scalar_start:-<flow end time>}, the end of the flow solve) and normalised by
+the initial scalar value recorded in cfd_case_metadata.json (C0 = 1 for the
+paper cases); --t0 and --c0 override these defaults.
+EOF
+    if [ "$NPROCS" -gt 1 ]; then
+        cat <<EOF
+Only the last time step was reconstructed. To reconstruct another written time
+(for example the end of the flow solve) run: reconstructPar -time <time>
+EOF
+    fi
+else
+    info "finished (stages: ${STAGES//,/ })"
+fi

@@ -2,9 +2,9 @@
 """Check and optionally repair STL watertightness before OpenFOAM case generation.
 
 This script uses trimesh for deterministic geometry preflight checks. The repair
-step applies conservative cleanup operations available in trimesh, but it does
-not pretend to solve every bad STL. If a mesh is still not watertight after
-repair, the script exits non-zero in strict mode.
+step applies conservative cleanup operations available in trimesh, but it
+cannot repair every defective STL. If a mesh is still not watertight after
+repair, the script exits non-zero unless --allow-non-watertight is given.
 """
 from __future__ import annotations
 

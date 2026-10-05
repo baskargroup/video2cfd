@@ -29,6 +29,14 @@ python run_pipeline.py --config ../configs/auditorium.yaml  --steps 2,2b,3,4,5  
 
 Outputs land in `data/projects/<name>/runs/<run_id>/4_stl/`:
 `furniture.stl`, `room.stl`, `furniture_and_room.stl`, and per-object STLs.
+When the room is rotated relative to the coordinate axes (`room.rotation_deg`,
+set in the config or in the editor), step 5 also writes wall-aligned copies to
+`4_stl/axis_aligned/`.
+
+**Next step: CFD.** The downstream OpenFOAM workflow in `cfd/` takes its
+geometry from the wall-aligned folder (`4_stl/axis_aligned/`, or `4_stl/` itself
+for a room that is not rotated). See [`cfd_reproduce.md`](cfd_reproduce.md) for
+which file each CFD case of the paper uses and how to generate and run a case.
 
 ## Reproducibility notes
 

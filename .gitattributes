@@ -1,0 +1,22 @@
+# Keep LF line endings in the working tree on every platform, also on Windows
+# checkouts with core.autocrlf=true.
+#
+# The shell scripts, the SLURM scripts and the Allrun template are executed on
+# Linux (natively, in a container or on a cluster), often after being copied
+# from a Windows checkout; a carriage return in them breaks bash. Python, YAML
+# and Markdown files are kept LF as well, so that copied files and their hashes
+# do not depend on the platform of the checkout.
+#
+# cfd/solvers/scalarTransportFoamTurbulent/ has its own .gitattributes
+# (everything LF, for wmake).
+*.sh      text eol=lf
+*.slurm   text eol=lf
+*.py      text eol=lf
+*.yaml    text eol=lf
+*.md      text eol=lf
+cfd/templates/Allrun  text eol=lf
+*.cff     text eol=lf
+*.txt     text eol=lf
+Dockerfile      text eol=lf
+.gitignore      text eol=lf
+.gitattributes  text eol=lf

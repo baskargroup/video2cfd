@@ -12,6 +12,24 @@ results/
 *.npy
 scene_log*.json
 
+# --- Downstream CFD (cfd/): generated cases and large artifacts ---
+# Generated cases normally live under runs/ (ignored above). The patterns below
+# also cover a case that was generated somewhere else in the working tree.
+processor*/
+postProcessing/
+log.*
+status/
+*.foam
+stl_watertight_report.json
+# Container images and downloaded archives
+*.sif
+*.sif.sha256
+*.tar.gz
+*.zip
+# SLURM job logs of cfd/scripts/*.slurm (written to the submit directory)
+video2cfd_*.out
+video2cfd_*.err
+
 # --- Python ---
 __pycache__/
 *.py[cod]
@@ -29,22 +47,3 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
-
-# Downstream CFD generated outputs and large artifacts
-runs/
-cfd/runs/
-*.foam
-processor*/
-postProcessing/
-*.sif
-*.tar.gz
-*.zip
-log.*
-status/
-__pycache__/
-*.py[cod]
-
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
